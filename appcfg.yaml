@@ -1,0 +1,17 @@
+##################################
+# realman_teleop app config
+# author: wel2018
+# date: 2025-08-26
+##################################
+
+# 详细日志
+VERBOSE: 1
+
+# debugpy 线程调试模式
+THREAD_DEBUG: 0
+
+# 性能测试
+BENCHMARK: 0
+
+# 遥操作设置
+spacemouse_speed_ratio: 0.3
