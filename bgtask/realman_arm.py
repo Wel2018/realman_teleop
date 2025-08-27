@@ -1,7 +1,8 @@
-# https://develop.realman-robotics.com/robot4th/apipython/getStarted/
+# 官方文档：https://develop.realman-robotics.com/robot/summarize/
 # pip install Robotic_Arm
 # Successfully installed Robotic_Arm-1.1.1
 from Robotic_Arm.rm_robot_interface import * # type: ignore
+from rich import print
 
 
 """
@@ -38,17 +39,18 @@ class RealmanArmClient:
             print("\nFailed to get arm software information, Error code: ", software_info[0], "\n")
 
     def move_p_canfd(self, pose: list):
-        print(f"MOVE_P: {pose}")
-        self.robot.rm_movep_canfd(pose, True, 1, 60)
+        # self.robot.rm_movej_p
+        ret = self.robot.rm_movep_canfd(pose, False, 1, 60)
+        print(f"MOVE_P: {pose}, ret={ret}")
 
     def gripper_open(self):
-        self.robot.rm_set_gripper_release(500, True, 10)
+        ret = self.robot.rm_set_gripper_release(500, True, 10)
 
     def gripper_close(self):
-        self.robot.rm_set_gripper_pick(500, 200, True, 10)
+        ret = self.robot.rm_set_gripper_pick(500, 200, True, 10)
 
     def __del__(self):
-        self.robot.rm_delete_robot_arm()
+        ret = self.robot.rm_delete_robot_arm()
 
     def get_pose(self):
         return self.robot.rm_get_current_arm_state()

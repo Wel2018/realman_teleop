@@ -10,6 +10,16 @@ from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 
 
+USE_SPACEMOUSE = 0
+USE_KEYBOARD = 0
+USE_ARM = 0
+
+
+# import str
+import jurigged
+jurigged.watch("./")
+
+
 class SharedData:
     """共享数据"""
     incr = {
@@ -22,14 +32,6 @@ class SharedData:
         "gripper": 0, # 0 表示没有动作，1 表示打开夹爪，-1 表示关闭夹爪
     }
     incr_bak = {}
-
-
-class WorkMode:
-    """遥操作工作模式"""
-    keyboard = 0
-    spacemouse = 1
-    iphone = 2
-    io = 3
 
 
 class MainWindow(qtbase.QApp):
@@ -47,17 +49,14 @@ class MainWindow(qtbase.QApp):
     is_going_to_init_pos = 0
     VERBOSE = q_appcfg.VERBOSE
 
-    def __init__(self, parent = None):
-        ui = self.ui = Ui_DemoWindow()
-        super().__init__(ui, parent, q_appcfg)
-        self.init(ui_logger=ui.txt_log, logger=logger)
-
+    def pre_init(self):
+        return super().pre_init()
+    
+    def post_init(self):
+        ui = self.ui
         # 绑定点击事件
-        # self.bind_clicked(ui.btn_setting, lambda: self.setting_wd.showNormal())
         self.bind_clicked(ui.btn_clear, self.clean_log)
         self.bind_clicked(ui.btn_gripper, self.set_gripper)
-        # self.bind_clicked(ui.btn_open_dir, lambda: self.open_dir(self.ui.dataset_dir.text()))
-        # self.bind_clicked(ui.btn_play, self.play)
         
         # 遥操作控制步长改变
         # 线速度、角速度
@@ -77,35 +76,31 @@ class MainWindow(qtbase.QApp):
             lambda val: \
                 setattr(self, 'rot_vel', round(val,3))
         )
-        
-        # 摄像头 --------------------
-        # self.camtype = q_appcfg.APPCFG_DICT['camtype']
-        # camtypes=q_appcfg.APPCFG_DICT['camtypes_for_S_mode']
-        # from toolbox.cam3d import load_cam3d
-        # self.cam = load_cam3d(
-        #     self.camtype, camtypes,
-        #     is_start=1, is_warmup=1
-        # )
 
-        # zero_img = np.zeros((480, 640, 3), dtype=np.uint8)
-        # self.zero_img = qtbase.QPixmap(qtbase.cv2qt(zero_img))
-        # self.reset_viz()
-        # self.robot_cam_th = QTaskCamera(Camera3DWrapper(self.cam))
-        # self.robot_cam_th.bind(on_data=self.get_obs)
-        # self.add_th(self.TH_CAM, self.robot_cam_th, 1)
-        
-        # 机械臂控制 --------------------
-        self.arm = RealmanArmClient()
-        pose = self.arm.get_pose()
-        self.add_log(f"pose={pose}")
-        self.add_log("程序初始化完成")
+    def load_device(self):
+        # 机械臂 --------------------
+        if USE_ARM:
+            self.arm = RealmanArmClient()
+            pose = self.arm.get_pose()
+            self.add_log(f"pose={pose}")
+        self.add_log("程序初始化完成", color="green")
 
         # 遥操作 -----------------------
-        # self.add_log("SpaceMouse 控制")
-        # self.spacemouse_th = SpaceMouseListener(devtype="SpaceMouse Compact")
-        # self.spacemouse_th.bind(on_data=self.spacemouse_cb, on_msg=self.add_log)
-        # self.add_th(self.TH_CTL_MODE, self.spacemouse_th, 1)
-        
+        if USE_SPACEMOUSE:
+            self.add_log("SpaceMouse 控制")
+            self.spacemouse_th = SpaceMouseListener(devtype="SpaceMouse Compact")
+            self.spacemouse_th.bind(on_data=self.spacemouse_cb, on_msg=self.add_log)
+            self.add_th(self.TH_CTL_MODE, self.spacemouse_th, 1)
+        return super().post_init()
+
+    def __init__(self, parent = None):
+        ui = self.ui = Ui_DemoWindow()
+        super().__init__(ui, parent, q_appcfg)
+        self.pre_init()
+        self.init(ui_logger=ui.txt_log, logger=logger)
+        self.post_init()
+        self.load_device()
+
 
     @qtbase.Slot(dict)
     def spacemouse_cb(self, data: dict):
@@ -158,6 +153,7 @@ class MainWindow(qtbase.QApp):
             'P': xyzRPY[4],
             'Y': xyzRPY[5],
         }
+
         for k in pose.keys():
             pose[k] += _incr[k]
         
@@ -191,19 +187,6 @@ class MainWindow(qtbase.QApp):
             self.add_log("关闭夹爪")
             self.arm.gripper_close()
 
-    # def reset_viz(self):
-    #     self.pix_left = self.zero_img
-    #     self.pix_right = self.zero_img
-
-    def keyboard_ctl(self, state):
-        #state: 0 未勾选, 1 半勾选, 2 勾选
-        if state == 2:
-            self.is_keyboard_ctrl = 1
-            self.add_log("开启遥操作模式")
-        else:
-            self.is_keyboard_ctrl = 0
-            self.add_log("关闭遥操作模式")
-        
 
     def get_empty_incr(self):
         incr = {
@@ -222,15 +205,56 @@ class MainWindow(qtbase.QApp):
         （即按住 A，只会触发一次 keyPressEvent，不会连续触发，松开也是只触发一次）
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
-        if not event.isAutoRepeat():
-            key = event.text().upper()
-            # self.add_key(key)
+        key = event.text().upper()
+        # print(f"press {key}")
 
+        if event.key() == qtbase.qt_keys.Key_F5:
+            self.reload()
+            self.add_log("QApp reload", color="red")
+            return
+
+        if USE_KEYBOARD:
+            ret, data = self.arm.get_pose()
+            pose: list = data['pose']
+            incr = {
+                'x': .0,
+                'y': .0,
+                'z': .0,
+                'R': .0,
+                'P': .0,
+                'Y': .0,
+            }
+            step = 0.01
+
+            if key == "A":
+                incr['y'] = -step
+            elif key == "D":
+                incr['y'] = step
+            elif key == "W":
+                incr['x'] = step
+            elif key == "S":
+                incr['x'] = -step
+            elif key == "Q":
+                incr['z'] = step
+            elif key == "Z":
+                incr['z'] = -step
+
+            for i, k in enumerate(['x','y','z','R','P','Y']):
+                pose[i] += incr[k]
+
+            ret = self.arm.robot.rm_movep_canfd(pose, False, 1, 60)
+
+            print(f"ret={ret}, pose={pose}")
+
+        if not event.isAutoRepeat():
             if self.VERBOSE:
                 print(f"keyPressEvent {event}")
-            incr = self.get_empty_incr()
 
-        return super().keyPressEvent(event)
+        # return super().keyPressEvent(event)
+    def keyReleaseEvent(self, event: qtbase.QKeyEvent):
+        # return super().keyReleaseEvent(event)
+        ...
+
 
     def close_ready(self):
         ...

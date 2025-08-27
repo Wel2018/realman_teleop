@@ -47,8 +47,15 @@
           </item>
           <item>
            <widget class="QPushButton" name="btn_clear">
+            <property name="font">
+             <font>
+              <family>Microsoft YaHei</family>
+              <pointsize>8</pointsize>
+              <bold>true</bold>
+             </font>
+            </property>
             <property name="text">
-             <string>x</string>
+             <string>x 清空日志</string>
             </property>
            </widget>
           </item>
@@ -61,7 +68,7 @@
             <item>
              <widget class="QPushButton" name="btn_gripper">
               <property name="text">
-               <string>夹爪开合</string>
+               <string>夹爪</string>
               </property>
              </widget>
             </item>
@@ -84,31 +91,6 @@
               </property>
               <property name="flat">
                <bool>false</bool>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_4">
-            <item>
-             <widget class="QCheckBox" name="is_keyboard_ctrl">
-              <property name="text">
-               <string>遥操作使能</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="is_collect_data">
-              <property name="text">
-               <string>采集轨迹</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="is_mirror">
-              <property name="text">
-               <string>镜像操控模式</string>
               </property>
              </widget>
             </item>
