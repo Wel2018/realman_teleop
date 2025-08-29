@@ -6,7 +6,7 @@ from toolbox.qt import qtbase
 from .. import q_appcfg
 
 
-class SpaceMouseListener(qtbase.QAsyncTask):
+class SpaceMouse:
     """SpaceMouse 鼠标状态监听器，异步反馈控制状态
     
     ### 说明
@@ -111,10 +111,9 @@ class SpaceMouseListener(qtbase.QAsyncTask):
     _d: dict[str, pyspacemouse.DeviceSpec] = pyspacemouse.device_specs
     _d['SpaceMouse Pro Wireless'].hid_id = [0x256F, 0xC638]  # 有线
     _d['SpaceMouse Compact'].hid_id = [0x256F, 0xC635]  # 有线
-    intv = 10  # ms
-    
-    def __init__(self, conf: dict = {}, devtype="SpaceMouse Pro Wireless"):
-        super().__init__(conf)
+    # intv = 10  # ms
+
+    def __init__(self, devtype="SpaceMouse Pro Wireless") -> None:
         dev = pyspacemouse.open(
             # dof_callback=pyspacemouse.print_state,
             # button_callback=pyspacemouse.print_buttons
@@ -124,16 +123,18 @@ class SpaceMouseListener(qtbase.QAsyncTask):
         else:
             self.is_ok = 0
             print("空间鼠标未连接")
-        self.is_run = 0
+        # self.is_run = 0
         self.speed_ratio = q_appcfg.APPCFG_DICT['spacemouse_speed_ratio']
-        self.sigs = {
+        self.btn_state = {
             "gripper": 0,
             "gozero": 0,
             "collect": 0,
         }
         # self.btn2 = 0
         self.devtype = devtype
-        
+        self.cur_state = {}
+
+
     def _get_button_state(self, state: pyspacemouse.SpaceNavigator):
         """获取鼠标按钮状态"""
         if "SpaceMouse Pro" in self.devtype:
@@ -164,11 +165,11 @@ class SpaceMouseListener(qtbase.QAsyncTask):
     
         def _trigger_01_impl(slot='gripper'):
             # 通过计算当前帧与上一帧的状态，判断是否触发，然后记录当前状态再返回信号状态
-            if self.sigs[slot] == 0 and btn_state[slot] == 1:
-                self.sigs[slot] = 1
+            if self.btn_state[slot] == 0 and btn_state[slot] == 1:
+                self.btn_state[slot] = 1
                 return 1
-            elif self.sigs[slot] == 1 and btn_state[slot] == 0:
-                self.sigs[slot] = 0
+            elif self.btn_state[slot] == 1 and btn_state[slot] == 0:
+                self.btn_state[slot] = 0
                 return 0
             return 0
     
@@ -179,27 +180,38 @@ class SpaceMouseListener(qtbase.QAsyncTask):
             ret['collect'] = _trigger_01_impl('collect')
         return ret
     
+    def read_state(self):
+        state: pyspacemouse.SpaceNavigator = pyspacemouse.read()  # type: ignore
+        # R: roll 滚转，沿着 x 轴
+        # P: pitch 俯仰，沿着 y 轴
+        # Y: yaw 偏航，沿着 z 轴
+        cur_state = {
+            "x": state.y,  # type: ignore
+            "y": -state.x,  # type: ignore
+            "z": state.z,  # type: ignore
+            "R": state.roll,  # type: ignore
+            "P": state.pitch,  # type: ignore
+            "Y": -state.yaw  # type: ignore
+        }
+        
+        # 控制速度
+        for k in self.POSE_KEYS:
+            cur_state[k] *= self.speed_ratio
+        
+        cur_state.update(self._trigger_01(state))
+        return cur_state
+
+
+class SpaceMouseListener(qtbase.QAsyncTask):
+    
+    def __init__(self, conf: dict = {}, devtype="SpaceMouse Compact"):
+        super().__init__(conf)
+        self.device = SpaceMouse(devtype)
+        self.cur_state = {}
+    
     def run(self):
         self.is_run = 1
         while self.is_run:
-            state: pyspacemouse.SpaceNavigator = pyspacemouse.read()  # type: ignore
-            # R: roll 滚转，沿着 x 轴
-            # P: pitch 俯仰，沿着 y 轴
-            # Y: yaw 偏航，沿着 z 轴
-            data = {
-                "x": state.y,  # type: ignore
-                "y": -state.x,  # type: ignore
-                "z": state.z,  # type: ignore
-                "R": state.roll,  # type: ignore
-                "P": state.pitch,  # type: ignore
-                "Y": -state.yaw  # type: ignore
-            }
-            
-            # 控制速度
-            for k in self.POSE_KEYS:
-                data[k] *= self.speed_ratio
-            
-            data.update(self._trigger_01(state))
-            self.sig_data.emit(data)
-            # time.sleep(self.intv/1000)
+            self.cur_state = self.device.read_state()
+            # print(self.cur_state)
             self.msleep(10)

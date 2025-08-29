@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 import numpy as np
 from rich import print
 from toolbox.core.time_op import get_time_str
@@ -10,9 +11,8 @@ from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 
 
-USE_SPACEMOUSE = 0
-USE_KEYBOARD = 0
-USE_ARM = 0
+USE_SPACEMOUSE = 1
+USE_ARM = 1
 
 
 # import str
@@ -56,7 +56,7 @@ class MainWindow(qtbase.QApp):
         ui = self.ui
         # 绑定点击事件
         self.bind_clicked(ui.btn_clear, self.clean_log)
-        self.bind_clicked(ui.btn_gripper, self.set_gripper)
+        # self.bind_clicked(ui.btn_gripper, self.set_gripper)
         
         # 遥操作控制步长改变
         # 线速度、角速度
@@ -84,13 +84,19 @@ class MainWindow(qtbase.QApp):
             pose = self.arm.get_pose()
             self.add_log(f"pose={pose}")
         self.add_log("程序初始化完成", color="green")
+        # self.arm.robot.rm_set_tool_do_state
 
         # 遥操作 -----------------------
         if USE_SPACEMOUSE:
             self.add_log("SpaceMouse 控制")
             self.spacemouse_th = SpaceMouseListener(devtype="SpaceMouse Compact")
-            self.spacemouse_th.bind(on_data=self.spacemouse_cb, on_msg=self.add_log)
+            # self.spacemouse_th.bind(on_data=self.spacemouse_cb, on_msg=self.add_log)
             self.add_th(self.TH_CTL_MODE, self.spacemouse_th, 1)
+        
+        from .bgtask.realman_arm import RealmanArmTask
+        self.arm_task = RealmanArmTask(self.arm, self.spacemouse_th)
+        self.add_th("arm_task", self.arm_task, 1)
+
         return super().post_init()
 
     def __init__(self, parent = None):
@@ -101,92 +107,9 @@ class MainWindow(qtbase.QApp):
         self.post_init()
         self.load_device()
 
-
-    @qtbase.Slot(dict)
-    def spacemouse_cb(self, data: dict):
-        if self.is_going_to_init_pos:
-            print("正在返回初始位置，忽略")
-            return
-        
-        # ZERO = 0.001
-        # if data['x'] <= ZERO and data['y'] <= ZERO and data['z'] <= ZERO:
-        #     return
-        
-        if q_appcfg.VERBOSE:
-            print(f"{get_time_str(2)} data={data}")
-            
-        # 所有按键的数据都已同步
-        incr_prev = SharedData.incr
-        
-        if data['gripper']:
-            self.set_gripper()
-            return
-        
-        if data['gozero']:
-            # self.arm.join(1)
-            # self.arm.stop()
-            # self.gozero()
-            print("gozero")
-            return
-        
-        # if data['collect']:
-        #     self.kb_collect()
-        #     return
-        
-        # 将 spacemouse 数据格式转为 incr 字典
-        _incr = {}
-        for k in ['x','y','z']:
-            _incr[k] = data[k] if data[k] else 0
-        for k in ['R','P','Y']:
-            _incr[k] = data[k] if data[k] else 0
-
-        # print(f"{get_time_str(2)} {_incr}")
-        # self.arm.cartesian_velocity_control(_incr)
-        _p = self.arm.get_pose()
-        xyzRPY = _p[1]['pose']
-
-        pose = {
-            'x': xyzRPY[0],
-            'y': xyzRPY[1],
-            'z': xyzRPY[2],
-            'R': xyzRPY[3],
-            'P': xyzRPY[4],
-            'Y': xyzRPY[5],
-        }
-
-        for k in pose.keys():
-            pose[k] += _incr[k]
-        
-        # print(pose)
-        self.arm.move_p_canfd(list(pose.values()))
-        SharedData.incr.update(_incr)
-        
-
     def play(self):
         """执行任务理解逻辑"""
         self.add_log("play")
-
-
-    def gozero(self):
-        """回到初始位置"""
-        self.add_log("G：回到初始位置")
-        if not self.is_going_to_init_pos:
-            self.add_log("正在回到初始位置中...")
-            self.is_going_to_init_pos = 1
-            # self.arm.goto_init_pos()
-            self.is_going_to_init_pos = 0
-            self.add_log("机械臂已归位！")
-
-    def set_gripper(self):
-        """夹爪控制"""
-        self.is_gripper_open = not self.is_gripper_open
-        if self.is_gripper_open:
-            self.add_log("打开夹爪")
-            self.arm.gripper_open()
-        else:
-            self.add_log("关闭夹爪")
-            self.arm.gripper_close()
-
 
     def get_empty_incr(self):
         incr = {
@@ -206,49 +129,82 @@ class MainWindow(qtbase.QApp):
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
         key = event.text().upper()
-        # print(f"press {key}")
+        print(f"press {key}")
 
         if event.key() == qtbase.qt_keys.Key_F5:
             self.reload()
             self.add_log("QApp reload", color="red")
             return
 
-        if USE_KEYBOARD:
-            ret, data = self.arm.get_pose()
-            pose: list = data['pose']
-            incr = {
-                'x': .0,
-                'y': .0,
-                'z': .0,
-                'R': .0,
-                'P': .0,
-                'Y': .0,
-            }
-            step = 0.01
 
-            if key == "A":
-                incr['y'] = -step
-            elif key == "D":
-                incr['y'] = step
-            elif key == "W":
-                incr['x'] = step
-            elif key == "S":
-                incr['x'] = -step
-            elif key == "Q":
-                incr['z'] = step
-            elif key == "Z":
-                incr['z'] = -step
+        ret, data = self.arm.get_pose()
+        pose: list = data['pose']
+        _pose = {
+            "x": pose[0],
+            "y": pose[1],
+            "z": pose[2],
+            "R": pose[3],
+            "P": pose[4],
+            "Y": pose[5],
+        }
+        incr = {
+            'x': .0,
+            'y': .0,
+            'z': .0,
+            'R': .0,
+            'P': .0,
+            'Y': .0,
+        }
+        step = 0.01
 
-            for i, k in enumerate(['x','y','z','R','P','Y']):
-                pose[i] += incr[k]
+        # xyz
+        if key == "A":
+            incr['x'] = step
+        elif key == "D":
+            incr['x'] = -step
+        elif key == "W":
+            incr['y'] = -step
+        elif key == "S":
+            incr['y'] = step
+        elif key == "Q":
+            incr['z'] = step
+        elif key == "Z":
+            incr['z'] = -step
 
-            ret = self.arm.robot.rm_movep_canfd(pose, False, 1, 60)
+        # RPY
+        step *= 10
+        if key == "U":
+            incr['R'] = step
+        elif key == "J":
+            incr['R'] = -step
+        elif key == "I":
+            incr['P'] = step
+        elif key == "K":
+            incr['P'] = -step
+        elif key == "O":
+            incr['Y'] = step
+        elif key == "L":
+            incr['Y'] = -step
 
-            print(f"ret={ret}, pose={pose}")
+        if key == "G":
+            self.arm.gozero()
+            self.add_log("回到零位")
+            return
+
+        for i, k in enumerate(['x','y','z','R','P','Y']):
+            _pose[k] += incr[k]
+
+        
+        ret = self.arm.robot.rm_movep_canfd(list(_pose.values()), False, 1, 60)
+        print(f"ret={ret}, incr={incr}")
+        print(f"ret={ret}, pose={pose}")
 
         if not event.isAutoRepeat():
+            # self.add_key(key)
+
             if self.VERBOSE:
                 print(f"keyPressEvent {event}")
+            # incr = self.get_empty_incr()
 
         # return super().keyPressEvent(event)
     def keyReleaseEvent(self, event: qtbase.QKeyEvent):
