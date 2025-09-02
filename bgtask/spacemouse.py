@@ -186,8 +186,10 @@ class SpaceMouse:
         # P: pitch 俯仰，沿着 y 轴
         # Y: yaw 偏航，沿着 z 轴
         cur_state = {
-            "x": state.y,  # type: ignore
-            "y": -state.x,  # type: ignore
+            # "x": -state.y,  # type: ignore
+            # "y": state.x,  # type: ignore
+            "x": state.x,  # type: ignore
+            "y": state.y,  # type: ignore
             "z": state.z,  # type: ignore
             "R": state.roll,  # type: ignore
             "P": state.pitch,  # type: ignore
