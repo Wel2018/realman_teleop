@@ -3,7 +3,7 @@
 import time
 import pyspacemouse
 from toolbox.qt import qtbase
-from .. import q_appcfg
+# from .. import q_appcfg
 
 
 class SpaceMouse:
@@ -113,7 +113,7 @@ class SpaceMouse:
     _d['SpaceMouse Compact'].hid_id = [0x256F, 0xC635]  # 有线
     # intv = 10  # ms
 
-    def __init__(self, devtype="SpaceMouse Pro Wireless") -> None:
+    def __init__(self, devtype="SpaceMouse Pro Wireless", speed_ratio=0.3) -> None:
         dev = pyspacemouse.open(
             # dof_callback=pyspacemouse.print_state,
             # button_callback=pyspacemouse.print_buttons
@@ -124,7 +124,7 @@ class SpaceMouse:
             self.is_ok = 0
             print("空间鼠标未连接")
         # self.is_run = 0
-        self.speed_ratio = q_appcfg.APPCFG_DICT['spacemouse_speed_ratio']
+        self.speed_ratio = speed_ratio
         self.btn_state = {
             "gripper": 0,
             "gozero": 0,
@@ -201,19 +201,103 @@ class SpaceMouse:
             cur_state[k] *= self.speed_ratio
         
         cur_state.update(self._trigger_01(state))
+        # eg:
+        # {'x': 0.0, 'y': 0.0, 'z': 0.0, 'R': 0.0, 'P': 0.0, 'Y': -0.0, 'gripper': 0, 'gozero': 0}
+
+        # round:3
+        for k in cur_state.keys():
+            cur_state[k] = round(cur_state[k], 3)
         return cur_state
 
 
 class SpaceMouseListener(qtbase.QAsyncTask):
+    # sig_data = qtbase.Signal(dict)
     
-    def __init__(self, conf: dict = {}, devtype="SpaceMouse Compact"):
+    def __init__(self, conf: dict = {}, devtype="SpaceMouse Compact", label=None):
         super().__init__(conf)
         self.device = SpaceMouse(devtype)
         self.cur_state = {}
+        self.label = label
     
     def run(self):
         self.is_run = 1
         while self.is_run:
-            self.cur_state = self.device.read_state()
-            # print(self.cur_state)
-            self.msleep(10)
+            # self.msleep(1)
+            state = self.cur_state = self.device.read_state()
+            # print(f"cur_state: {self.cur_state}")
+            # self.sig_data.emit(state)
+            self.label.setText(str(state)) # type: ignore
+
+            # 问题定位：
+            # 高频率的信号释放会导致进入缓冲队列，主线程的事件循环按照次序处理，会导致延迟问题
+            # 3d 鼠标的动作到主线程存在 1-2s 的延迟，操作不跟手，因此只把侧键事件发给主线程
+            # 鼠标移动事件不释放信号，而是直接在后台处理
+            # # {'x': 0.0, 'y': 0.0, 'z': 0.0, 'R': 0.0, 'P': 0.0, 'Y': -0.0, 'gripper': 0, 'gozero': 0}
+            if state['x'] != 0 or state['y'] != 0 or state['z'] != 0 or \
+               state['R'] != 0 or state['P'] != 0 or state['Y'] != 0:
+                # self.sig_data.emit(state)
+                # print(f"cur_state: {self.cur_state}")
+                self.label.setText(str(state)) # type: ignore
+
+            elif state['gripper'] == 1 or state['gozero'] == 1:
+                self.sig_data.emit(state)
+                # print(f"cur_state: {self.cur_state}")
+                # self.label.setText(str(state)) # type: ignore
+
+            else:
+                continue
+
+
+######################################################
+# 测试
+# python projects/realman_teleop/bgtask/spacemouse.py
+######################################################
+
+
+def test_spacemouse():
+    spacemouse = SpaceMouse("SpaceMouse Compact")
+    while 1:
+        try:
+            state = spacemouse.read_state()
+            print(state)
+            time.sleep(1/1000)
+        except KeyboardInterrupt:
+            break
+
+
+def test_spacemouse_listener():
+    from toolbox.qt import qtbase
+    import sys
+
+    class TestApp(qtbase.QWidget):
+        def __init__(self):
+            super().__init__()
+            # 添加一个label
+            self.label = qtbase.QLabel("SpaceMouse Data:")
+            self.msg = qtbase.QLabel("")
+            self._layout = qtbase.QVBoxLayout()
+            self._layout.addWidget(self.label)
+            self._layout.addWidget(self.msg)
+            self.setLayout(self._layout)
+
+            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", label=self.msg)
+            self.spacemouse_listener.sig_data.connect(self.on_spacemouse_data)
+            self.spacemouse_listener.start()
+
+        def on_spacemouse_data(self, data: dict):
+            print("SpaceMouse Data:", data)
+            self.msg.setText(str(data))
+
+        def __del__(self):
+            self.spacemouse_listener.stop()
+
+
+    app = qtbase.QApplication(sys.argv)
+    mapp = TestApp()
+    mapp.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    # test_spacemouse()
+    test_spacemouse_listener()

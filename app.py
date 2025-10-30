@@ -7,7 +7,7 @@ from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg, logger
 from .bgtask.spacemouse import SpaceMouseListener
-from .bgtask.realman_arm import RealmanArmClient, pose_by_rot
+from .bgtask.realman_arm import RealmanArmClient
 
 
 USE_SPACEMOUSE = 0
@@ -275,16 +275,20 @@ class MainWindow(qtbase.QApp):
                 p2['P'],
                 p2['Y'],
             ]
+            _pose = list(p2.values())
 
             if incr['R']:
                 theta = incr['R']
-                new_pose = pose_by_rot(list(p2.values()), 'x', theta)
+                new_pose = self.arm.matrix_pose_rotate(_pose, 'x', theta)
+                # new_pose = pose_by_rot(list(p2.values()), 'x', theta)
             elif incr['P']:
                 theta = incr['P']
-                new_pose = pose_by_rot(list(p2.values()), 'y', theta)
+                new_pose = self.arm.matrix_pose_rotate(_pose, 'y', theta)
+                # new_pose = pose_by_rot(list(p2.values()), 'y', theta)
             elif incr['Y']:
                 theta = incr['Y']
-                new_pose = pose_by_rot(list(p2.values()), 'z', theta)
+                new_pose = self.arm.matrix_pose_rotate(_pose, 'z', theta)
+                # new_pose = pose_by_rot(list(p2.values()), 'z', theta)
 
             ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
             # ret = self.arm.robot.rm_movej_p(list(p2.values()), 20, 0, 0, 1)
