@@ -171,6 +171,87 @@ class MainWindow(qtbase.QApp):
             self.add_log("机械臂已归位！")
 
 
+    def get_pose(self) -> dict:
+        """获取机械臂当前位置"""
+        ret, data = self.arm.get_pose()
+        pose: list = data['pose']
+        return {
+            "x": pose[0],
+            "y": pose[1],
+            "z": pose[2],
+            "R": pose[3],
+            "P": pose[4],
+            "Y": pose[5],
+        }
+    
+    def get_empty_incr(self) -> dict:
+        """获取当前增量"""
+        return {
+            'x': .0,
+            'y': .0,
+            'z': .0,
+            'R': .0,
+            'P': .0,
+            'Y': .0,
+        }
+
+    def get_incr(self, key: str) -> dict:
+        """获取当前增量"""
+        incr = self.get_empty_incr()
+        step_xyz = 0.01
+        step_RPY = 0.1
+
+        if key == "A":
+            incr['x'] = step_xyz
+        elif key == "D":
+            incr['x'] = -step_xyz
+        elif key == "W":
+            incr['y'] = step_xyz
+        elif key == "S":
+            incr['y'] = -step_xyz
+        elif key == "Q":
+            incr['z'] = step_xyz
+        elif key == "Z":
+            incr['z'] = -step_xyz
+
+        elif key == "U":
+            incr['R'] = step_RPY
+        elif key == "J":
+            incr['R'] = -step_RPY
+        elif key == "I":
+            incr['P'] = step_RPY
+        elif key == "K":
+            incr['P'] = -step_RPY
+        elif key == "O":
+            incr['Y'] = step_RPY
+        elif key == "L":
+            incr['Y'] = -step_RPY
+        return incr
+
+    def incr_has_xyz(self, incr: dict) -> bool:
+        """判断增量是否包含 xyz 轴"""
+        return incr['x'] or incr['y'] or incr['z']
+
+    def incr_has_RPY(self, incr: dict) -> bool:
+        """判断增量是否包含 RPY 轴"""
+        return incr['R'] or incr['P'] or incr['Y']
+
+    def get_new_pose(self, pose: dict, incr: dict) -> dict:
+        """根据增量获取新位置"""
+        pose_ = pose.copy()
+        if self.incr_has_xyz(incr):
+            for i, k in enumerate(['x','y','z']):
+                pose_[k] += incr[k]
+        if self.incr_has_RPY(incr):
+            for i, k in enumerate(['R','P','Y']):
+                pose_[k] += incr[k]
+        return pose_
+
+
+    def pose_to_list(self, pose: dict) -> list:
+        """将 pose 转换为列表"""
+        return [pose['x'], pose['y'], pose['z'], pose['R'], pose['P'], pose['Y']]
+
     def keyPressEvent(self, event: qtbase.QKeyEvent):
         """按下按键：键盘打开 caps lock 模式，可以实现长按模式
         （即按住 A，只会触发一次 keyPressEvent，不会连续触发，松开也是只触发一次）
@@ -184,118 +265,44 @@ class MainWindow(qtbase.QApp):
             self.add_log("QApp reload", color="red")
             return
 
-
-        ret, data = self.arm.get_pose()
-        pose: list = data['pose']
-        _pose = {
-            "x": pose[0],
-            "y": pose[1],
-            "z": pose[2],
-            "R": pose[3],
-            "P": pose[4],
-            "Y": pose[5],
-        }
-        incr = {
-            'x': .0,
-            'y': .0,
-            'z': .0,
-            'R': .0,
-            'P': .0,
-            'Y': .0,
-        }
-        step = 0.01
-
-        # xyz
-        if key == "A":
-            incr['x'] = step
-        elif key == "D":
-            incr['x'] = -step
-        elif key == "W":
-            incr['y'] = -step
-        elif key == "S":
-            incr['y'] = step
-        elif key == "Q":
-            incr['z'] = step
-        elif key == "Z":
-            incr['z'] = -step
-
-        # RPY
-        step *= 10
-        # step *= 0.1
-        if key == "U":
-            incr['R'] = step
-        elif key == "J":
-            incr['R'] = -step
-        elif key == "I":
-            incr['P'] = step
-        elif key == "K":
-            incr['P'] = -step
-        elif key == "O":
-            incr['Y'] = step
-        elif key == "L":
-            incr['Y'] = -step
+        pose = self.get_pose()
+        incr = self.get_incr(key)
 
         if key == "G":
             self.arm.gozero()
             self.add_log("回到零位")
             return
         
-        p1 = _pose.copy()
-        p2 = _pose.copy()
+        # pose_bak = pose.copy()
 
-
-        if incr['x'] or incr['y'] or incr['z']:
-            for i, k in enumerate(['x','y','z']):
-                p2[k] += incr[k]
-            
-            # new_pose = list(p2.values())
-            new_pose = [
-                p2['x'],
-                p2['y'],
-                p2['z'],
-                p2['R'],
-                p2['P'],
-                p2['Y'],
-            ]
-            ret = self.arm.robot.rm_movep_canfd(new_pose, False, 1, 60)
+        # 处理 xyz 轴 --------------------------
+        if self.incr_has_xyz(incr):
+            pose_ = self.get_new_pose(pose, incr)
+            ret = self.arm.robot.rm_movep_canfd(self.pose_to_list(pose_), False, 1, 60)
 
             print("xyz", "-"*50)
             print(f"ret={ret}, incr={incr}")
-            print(f"ret={ret}, pose={p1}")
-            print(f"ret={ret}, new_pose={new_pose}")
+            print(f"new_pose={pose_}")
             return
         
-        if incr['R'] or incr['P'] or incr['Y']:
-            # new_pose = list(p2.values())
-            new_pose = [
-                p2['x'],
-                p2['y'],
-                p2['z'],
-                p2['R'],
-                p2['P'],
-                p2['Y'],
-            ]
-            _pose = list(p2.values())
+        # 处理 RPY 轴 --------------------------
+        if self.incr_has_RPY(incr):
+            pose_ = self.get_new_pose(pose, incr)
+            theta = incr['R'] if incr['R'] else incr['P'] if incr['P'] else incr['Y']
 
             if incr['R']:
-                theta = incr['R']
-                new_pose = self.arm.matrix_pose_rotate(_pose, 'x', theta)
-                # new_pose = pose_by_rot(list(p2.values()), 'x', theta)
+                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'x', theta)
             elif incr['P']:
-                theta = incr['P']
-                new_pose = self.arm.matrix_pose_rotate(_pose, 'y', theta)
-                # new_pose = pose_by_rot(list(p2.values()), 'y', theta)
+                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'y', theta)
             elif incr['Y']:
-                theta = incr['Y']
-                new_pose = self.arm.matrix_pose_rotate(_pose, 'z', theta)
-                # new_pose = pose_by_rot(list(p2.values()), 'z', theta)
-
+                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'z', theta)
+            else:
+                raise ValueError
+            
             ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
-            # ret = self.arm.robot.rm_movej_p(list(p2.values()), 20, 0, 0, 1)
         
             print("RPY", "-"*50)
             print(f"ret={ret}, incr={incr}")
-            print(f"ret={ret}, pose={p1}")
             print(f"ret={ret}, new_pose={new_pose}")
 
 
