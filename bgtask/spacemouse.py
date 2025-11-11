@@ -226,7 +226,7 @@ class SpaceMouseListener(qtbase.QAsyncTask):
             state = self.cur_state = self.device.read_state()
             # print(f"cur_state: {self.cur_state}")
             # self.sig_data.emit(state)
-            self.label.setText(str(state)) # type: ignore
+            # self.label.setText(str(state)) # type: ignore
 
             # 问题定位：
             # 高频率的信号释放会导致进入缓冲队列，主线程的事件循环按照次序处理，会导致延迟问题
@@ -237,7 +237,8 @@ class SpaceMouseListener(qtbase.QAsyncTask):
                state['R'] != 0 or state['P'] != 0 or state['Y'] != 0:
                 # self.sig_data.emit(state)
                 # print(f"cur_state: {self.cur_state}")
-                self.label.setText(str(state)) # type: ignore
+                # self.label.setText(str(state)) # type: ignore
+                ...
 
             elif state['gripper'] == 1 or state['gozero'] == 1:
                 self.sig_data.emit(state)

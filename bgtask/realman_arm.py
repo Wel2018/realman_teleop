@@ -7,18 +7,6 @@ from rich import print
 from typing import List, Tuple, Dict, Any, Optional
 
 # ----------------------------
-# 常量 / 配置
-# ----------------------------
-DEFAULT_IP = "192.168.10.19"
-DEFAULT_PORT = 8080
-
-# 控制参数（可按需调整）
-SCALE_XYZ = 0.2
-SCALE_RPY = 0.3
-ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
-LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
-
-# ----------------------------
 # numpy 旋转矩阵（更高效）
 # ----------------------------
 def rotx(theta: float) -> np.ndarray:
@@ -104,14 +92,16 @@ def pose_by_rot_cached(
 # ----------------------------
 class RealmanArmClient:
     
-    def __init__(self, ip: str = DEFAULT_IP, port: int = DEFAULT_PORT, arm_model: rm_robot_arm_model_e = rm_robot_arm_model_e.RM_MODEL_RM_63_III_E):
-        self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
-        self.handle = self.robot.rm_create_robot_arm(ip, port)
-        print(f"RobotArm ID: {getattr(self.handle, 'id', None)}")
-
+    def __init__(self, arm_model: rm_robot_arm_model_e = rm_robot_arm_model_e.RM_MODEL_RM_63_III_E):
         # 缓存 Algo 实例，避免频繁创建
         force_type = rm_force_type_e.RM_MODEL_RM_B_E  # 参考原代码
         self.algo = Algo(arm_model, force_type)  # type: ignore
+        self.is_connected = 0
+
+    def connect(self, ip, port=8080):
+        self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
+        self.handle = self.robot.rm_create_robot_arm(ip, port)
+        print(f"RobotArm ID: {getattr(self.handle, 'id', None)}")
 
         # 打印并设置 tool frame（保留原行为）
         try:
@@ -140,7 +130,8 @@ class RealmanArmClient:
             print("[warn] get_arm_software_info failed:", e)
 
         # 初始化回零位置（保留原行为）
-        self.gozero()
+        # self.gozero()
+        self.is_connected = 1
 
     def gozero(self):
         # 使用较短的参数调用，保留原意
@@ -180,14 +171,19 @@ class RealmanArmClient:
         return pose_by_rot_cached(self.algo, pose, rot_axis=axis, theta=theta)
 
     def __del__(self):
+        self.disconnect()
+
+    def disconnect(self):
         try:
             self.robot.rm_delete_robot_arm()
         except Exception:
             pass
 
+
 # ----------------------------
 # RealmanArmTask：QAsyncTask 子类（保留结构）
 # ----------------------------
+from toolbox.core.color_print import printc
 from toolbox.qt import qtbase
 from .spacemouse import SpaceMouseListener
 
@@ -196,9 +192,27 @@ class RealmanArmTask(qtbase.QAsyncTask):
     def __init__(self, arm: RealmanArmClient, spacemouse_th: SpaceMouseListener, conf: dict = {}):
         super().__init__(conf)
         self.spacemouse_th = spacemouse_th
+        self.spacemouse_th.sig_data.connect(self.on_spacemouse_btn_clicked)
         self.arm = arm
         self.is_gripper_open = True  # True = open
         self.is_run = False
+        
+        # 控制参数（可按需调整）
+        self.SCALE_XYZ = 0.2
+        self.SCALE_RPY = 0.3
+        self.ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
+        self.LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
+
+    def on_spacemouse_btn_clicked(self, state: dict):
+        printc(f"on_spacemouse_btn_clicked: {state}")
+
+        if state['gripper']:
+            printc("gripper toggle")
+            # self.set_gripper()
+        
+        if state['gozero']:
+            printc("gozero")
+            self.arm.gozero()
 
     def set_gripper(self):
         self.is_gripper_open = not self.is_gripper_open
@@ -210,39 +224,40 @@ class RealmanArmTask(qtbase.QAsyncTask):
     def _all_zero(self, cur_state: Dict[str, float]) -> bool:
         # 快速判断是否全零（只关心 motion 相关键）
         for k in ('x','y','z','R','P','Y'):
-            if abs(cur_state.get(k, 0.0)) >= ZERO_THRESHOLD:
+            if abs(cur_state.get(k, 0.0)) >= self.ZERO_THRESHOLD:
                 return False
         return True
 
     def run(self):
         self.is_run = True
         while self.is_run:
+            self.msleep(30)
             cur_state = self.spacemouse_th.cur_state
 
-            # 按钮类命令（优先处理）
-            if cur_state.get('gripper'):
-                print("[action] gripper toggle")
-                self.set_gripper()
-                # 防抖：等待引脚释放（避免重复触发）
-                self.msleep(100)
-                continue
+            # # 按钮类命令（优先处理）
+            # if cur_state.get('gripper'):
+            #     print("[action] gripper toggle")
+            #     self.set_gripper()
+            #     # 防抖：等待引脚释放（避免重复触发）
+            #     self.msleep(100)
+            #     continue
 
-            if cur_state.get('gozero'):
-                print("[action] gozero")
-                self.arm.gozero()
-                self.msleep(200)
-                continue
+            # if cur_state.get('gozero'):
+            #     print("[action] gozero")
+            #     self.arm.gozero()
+            #     self.msleep(200)
+            #     continue
 
-            if self._all_zero(cur_state):
-                self.msleep(LOOP_SLEEP_MS)
-                continue
+            # if self._all_zero(cur_state):
+            #     self.msleep(LOOP_SLEEP_MS)
+            #     continue
 
             # 获取当前机械臂状态（ret, data）
             ret, data = self.arm.get_pose()
             if ret != 0 or not data or 'pose' not in data:
                 # 获取失败时短暂等待并跳过
                 print("[warn] get_pose failed or missing data, ret=", ret)
-                self.msleep(LOOP_SLEEP_MS)
+                self.msleep(self.LOOP_SLEEP_MS)
                 continue
 
             pose = data['pose']  # [x,y,z,R,P,Y]
@@ -261,17 +276,18 @@ class RealmanArmTask(qtbase.QAsyncTask):
             max_val = cur_state.get(axis_choice, 0.0)
 
             # 如果最大值很小则视为无动作
-            if abs(max_val) < ZERO_THRESHOLD:
-                self.msleep(LOOP_SLEEP_MS)
+            if abs(max_val) < self.ZERO_THRESHOLD:
+                self.msleep(self.LOOP_SLEEP_MS)
                 continue
 
             # 处理线性平移
+            print(f"SCALE_XYZ={self.SCALE_XYZ}")
             if axis_choice in ('x','y','z'):
                 # 更新位置并下发 movep
                 new_pose = [
-                    cur_pose['x'] + (cur_state.get('x',0.0) * SCALE_XYZ),
-                    cur_pose['y'] + (cur_state.get('y',0.0) * SCALE_XYZ),
-                    cur_pose['z'] + (cur_state.get('z',0.0) * SCALE_XYZ),
+                    cur_pose['x'] + (cur_state.get('x',0.0) * self.SCALE_XYZ),
+                    cur_pose['y'] + (cur_state.get('y',0.0) * self.SCALE_XYZ),
+                    cur_pose['z'] + (cur_state.get('z',0.0) * self.SCALE_XYZ),
                     cur_pose['R'],
                     cur_pose['P'],
                     cur_pose['Y'],
@@ -285,14 +301,27 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
             # 处理姿态旋转（耦合）
             if axis_choice in ('R','P','Y'):
-                theta = max_val * SCALE_RPY
-                axis_map = {'R':'x','P':'y','Y':'z'}
+                theta = max_val * self.SCALE_RPY
+                # roll, pitch, yaw : 绕相机 X, Y, Z 轴的旋转角度
+                # roll 滚动角
+                # pitch 俯仰角
+                # yaw 偏航角
+                axis_map = {'R':'y','P':'x','Y':'z'}
                 rot_axis = axis_map[axis_choice]
+                if rot_axis == "x":
+                    theta = -theta
+                if rot_axis == "y":
+                    theta = -theta
+
                 try:
                     # 使用缓存的算法实例做旋转并得到新的 pose
                     new_pose = self.arm.matrix_pose_rotate(
-                        [cur_pose['x'], cur_pose['y'], cur_pose['z'],
-                         cur_pose['R'], cur_pose['P'], cur_pose['Y']],
+                        [cur_pose['x'], 
+                         cur_pose['y'], 
+                         cur_pose['z'],
+                         cur_pose['R'], 
+                         cur_pose['P'], 
+                         cur_pose['Y']],
                         rot_axis, theta
                     )
                     # 下发 movep 命令，保持平滑（保持 current pos 平移参数）
@@ -325,37 +354,36 @@ def test_rm_client():
 
 
 def test_rm_arm_task():
-    ...
-    # from toolbox.qt import qtbase
-    # import sys
+    from toolbox.qt import qtbase
+    import sys
 
-    # class TestApp(qtbase.QWidget):
-    #     def __init__(self):
-    #         super().__init__()
-    #         # 添加一个label
-    #         self.label = qtbase.QLabel("SpaceMouse Data:")
-    #         self.msg = qtbase.QLabel("")
-    #         self._layout = qtbase.QVBoxLayout()
-    #         self._layout.addWidget(self.label)
-    #         self._layout.addWidget(self.msg)
-    #         self.setLayout(self._layout)
+    class TestApp(qtbase.QWidget):
+        def __init__(self):
+            super().__init__()
+            # 添加一个label
+            self.label = qtbase.QLabel("SpaceMouse Data:")
+            self.msg = qtbase.QLabel("")
+            self._layout = qtbase.QVBoxLayout()
+            self._layout.addWidget(self.label)
+            self._layout.addWidget(self.msg)
+            self.setLayout(self._layout)
 
-    #         self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", label=self.msg)
-    #         self.spacemouse_listener.sig_data.connect(self.on_spacemouse_data)
-    #         self.spacemouse_listener.start()
+            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", label=self.msg)
+            self.spacemouse_listener.sig_data.connect(self.on_spacemouse_data)
+            self.spacemouse_listener.start()
 
-    #     def on_spacemouse_data(self, data: dict):
-    #         print("SpaceMouse Data:", data)
-    #         self.msg.setText(str(data))
+        def on_spacemouse_data(self, data: dict):
+            print("SpaceMouse Data:", data)
+            self.msg.setText(str(data))
 
-    #     def __del__(self):
-    #         self.spacemouse_listener.stop()
+        def __del__(self):
+            self.spacemouse_listener.stop()
 
 
-    # app = qtbase.QApplication(sys.argv)
-    # mapp = TestApp()
-    # mapp.show()
-    # sys.exit(app.exec())
+    app = qtbase.QApplication(sys.argv)
+    mapp = TestApp()
+    mapp.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
