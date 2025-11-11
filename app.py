@@ -8,15 +8,27 @@ from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg, logger
 from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
+from .bgtask.realman_arm import RealmanArmTask
 
 
 USE_SPACEMOUSE = 0
 USE_ARM = 1
 
+# ----------------------------
+# 常量 / 配置
+# ----------------------------
+# DEFAULT_IP = "192.168.10.19"
+# DEFAULT_PORT = 8080
 
-if q_appcfg.APPCFG_DICT['HOTRELOAD']:
-    import jurigged
-    jurigged.watch("./")
+# 控制参数（可按需调整）
+# SCALE_XYZ = 0.2
+# SCALE_RPY = 0.3
+# ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
+# LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
+
+# if q_appcfg.APPCFG_DICT['HOTRELOAD']:
+#     import jurigged
+#     jurigged.watch("./")
 
 
 class SharedData:
@@ -61,48 +73,98 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_gozero, self.gozero)
         self.bind_clicked(ui.btn_spacemouse_start, self.spacemouse_start)
         self.bind_clicked(ui.btn_spacemouse_stop, self.spacemouse_stop)
+        self.bind_clicked(ui.btn_arm_connect, self.arm_connect)
+        self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
         
         # 遥操作控制步长改变
+        # 默认速度
+        self.ui.step_posi.setValue(0.01)  # 键盘速度控制，线速度
+        self.ui.step_angle.setValue(0.1)  # 键盘速度控制，角速度
+        self.ui.step_posi2.setValue(0.2)  # 鼠标速度控制，线速度
+        self.ui.step_angle2.setValue(0.3)  # 鼠标速度控制，角速度
+
         # 线速度、角速度
-        self.pos_vel = ui.step_posi_vel.value()
-        self.rot_vel = ui.step_angle_vel.value()
+        self.pos_vel = ui.step_posi.value()
+        self.rot_vel = ui.step_angle.value()
+        # self.pos_vel2 = ui.step_posi2.value()
+        # self.rot_vel2 = ui.step_angle2.value()
+        self.is_spacemouse_running = 0
+
         self.max_duration = 1000*60
+        # self.keys_pressed = set()
         
         # # 在 lambda 表达式中不能使用赋值语句
+        # 修改键盘控制模式下的速度
         self.bind_val_changed(
-            ui.step_posi_vel, 
+            ui.step_posi, 
             lambda val: \
                 setattr(self, 'pos_vel', round(val,3))
         )
         
         self.bind_val_changed(
-            ui.step_angle_vel, 
+            ui.step_angle, 
             lambda val: \
                 setattr(self, 'rot_vel', round(val,3))
         )
 
+    def arm_connect(self):
+        ip = self.ui.arm_ip.text()
+        self.arm.connect(ip)
+        if self.arm.is_connected:
+            self.add_log("机械臂连接成功", color='green')
+            self.add_timer("timer_update_msg", 200, self.update_msg, 1)
+            stage = self.arm_get_collision()
+            self.ui.spin_collision_state.setValue(stage)
+            self.add_log(f"当前碰撞等级: {stage} [范围: 1-8]", color='green')
+            self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
+            self.add_log("程序初始化完成", color="green")
+            self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
+        else:
+            self.add_log("机械臂连接失败", color='red')
+            self.ui.label_arm.setStyleSheet("color: orange; background-color: #03db6b;")
+
+    def arm_disconnect(self):
+        self.arm.is_connected = 0
+        self.remove_timer("timer_update_msg")
+        self.arm.disconnect()
+        self.add_log("机械臂已断开", color='green')
+        self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
+
     def load_device(self):
-        # 机械臂 --------------------
         if USE_ARM:
             self.arm = RealmanArmClient()
-            pose = self.arm.get_pose()
-            self.add_log(f"pose={pose}")
-        self.add_log("程序初始化完成", color="green")
-
-        # 遥操作 -----------------------
         if USE_SPACEMOUSE:
             self.spacemouse_start()
+    
+    def update_msg(self):
+        """更新机械臂状态信息"""
+        ret, data = self.arm.get_pose()
+        j = data['joint']
+        p = data['pose']
+        err = data['err']
+        
+        p = [round(el,2) for el in p]
+        j = [round(el,2) for el in j]
+        # self.add_log(f"pose p={p}")
+        # self.add_log(f"pose j={j}")
+        self.ui.msg.setText(f"p={p}\n j={j}\n err={err}")
 
     def arm_set_collision(self):
-        ret1 = self.arm.robot.rm_get_collision_stage()
+        self.check_arm()
+        _, stage1 = self.arm.robot.rm_get_collision_stage()
         # arm.rm_get_collision_stage()
         stage = self.ui.spin_collision_state.value()
         ret = self.arm.robot.rm_set_collision_state(stage)
-        ret2 = self.arm.robot.rm_get_collision_stage()
+        _, stage2 = self.arm.robot.rm_get_collision_stage()
         self.add_log(f"设置碰撞等级: {stage}, ret={ret}", color='green')
-        self.add_log(f"碰撞防护等级：{ret1} → {ret2}")
+        self.add_log(f"碰撞防护等级状态：{stage1} → {stage2}")
+
+    def arm_get_collision(self):
+        _, stage = self.arm.robot.rm_get_collision_stage()
+        return stage
 
     def arm_recover(self):
+        self.check_arm()
         ret_err = self.arm.robot.rm_get_joint_err_flag()
         ret, joint_en_states = self.arm.robot.rm_get_joint_en_state()
         self.add_log(f"ret_err={ret_err}")
@@ -121,10 +183,12 @@ class MainWindow(qtbase.QApp):
         self.add_log("机械臂故障恢复完成", color='green')
 
     def arm_stop(self):
+        self.check_arm()
         ret = self.arm.robot.rm_set_arm_stop()
         self.add_log("机械臂急停", color="red")
 
     def spacemouse_start(self):
+        self.check_arm()
         if self.th.get(self.TH_CTL_MODE, None) is not None:
             self.add_log("SpaceMouse 服务已启动，跳过", color='yellow')
             return
@@ -132,20 +196,39 @@ class MainWindow(qtbase.QApp):
         self.add_log("SpaceMouse 服务启动", color='green')
         # devtype="SpaceMouse Pro Wireless"
         devtype="SpaceMouse Compact"
+
+        # 启动 3d 鼠标监听服务
         self.spacemouse_th = SpaceMouseListener(devtype=devtype)
-        # self.spacemouse_th.bind(on_data=self.spacemouse_cb, on_msg=self.add_log)
         self.add_th(self.TH_CTL_MODE, self.spacemouse_th, 1)
-    
-        from .bgtask.realman_arm import RealmanArmTask
+        self.ui.step_posi2.valueChanged.connect(self.spacemouse_speed_update)
+        self.ui.step_angle2.valueChanged.connect(self.spacemouse_speed_update)
+
+        # 启动机械臂循环控制服务
         self.arm_task = RealmanArmTask(self.arm, self.spacemouse_th)
         self.add_th("arm_task", self.arm_task, 1)
 
+        # 设置状态文本
+        self.ui.label_spacemouse.setStyleSheet("color: green; background-color: #03db6b;")
+        self.is_spacemouse_running = 1
+
+        # 启动时加载默认速度
+        self.spacemouse_speed_update(0)
+
+    def spacemouse_speed_update(self, value):
+        if not self.is_spacemouse_running:
+            return
+        self.arm_task.SCALE_XYZ = self.ui.step_posi2.value()
+        self.arm_task.SCALE_RPY = self.ui.step_angle2.value()
+
     def spacemouse_stop(self):
+        self.check_arm()
         self.add_log("SpaceMouse 服务退出", color='yellow')
         self.stop_th(self.TH_CTL_MODE)
         self.stop_th("arm_task")
         self.th.pop(self.TH_CTL_MODE, None)
         self.th.pop("arm_task", None)
+        self.ui.label_spacemouse.setStyleSheet("color: red; background-color: #f4cce4;")
+        self.is_spacemouse_running = 0
 
 
     def __init__(self, parent = None):
@@ -156,12 +239,14 @@ class MainWindow(qtbase.QApp):
         self.post_init()
         self.load_device()
 
-    def play(self):
-        """执行任务理解逻辑"""
-        self.add_log("play")
+    def check_arm(self):
+        if not self.arm.is_connected:
+            self.add_log("请先连接机械臂", color='red') 
+        assert self.arm.is_connected == 1, "请先连接机械臂"
 
     def gozero(self):
         """回到初始位置"""
+        self.check_arm()
         self.add_log("机械臂回到初始位置（快捷键：G）")
         if not self.is_going_to_init_pos:
             self.add_log("正在回到初始位置中...")
@@ -173,6 +258,7 @@ class MainWindow(qtbase.QApp):
 
     def get_pose(self) -> dict:
         """获取机械臂当前位置"""
+        self.check_arm()
         ret, data = self.arm.get_pose()
         pose: list = data['pose']
         return {
@@ -198,34 +284,34 @@ class MainWindow(qtbase.QApp):
     def get_incr(self, key: str) -> dict:
         """获取当前增量"""
         incr = self.get_empty_incr()
-        step_xyz = 0.01
-        step_RPY = 0.1
+        step_xyz = self.pos_vel
+        step_RPY = self.rot_vel
 
         if key == "A":
-            incr['x'] = step_xyz
+                incr['x'] = step_xyz
         elif key == "D":
-            incr['x'] = -step_xyz
+                incr['x'] = -step_xyz
         elif key == "W":
-            incr['y'] = step_xyz
+                incr['y'] = step_xyz
         elif key == "S":
-            incr['y'] = -step_xyz
+                incr['y'] = -step_xyz
         elif key == "Q":
-            incr['z'] = step_xyz
+                incr['z'] = step_xyz
         elif key == "Z":
-            incr['z'] = -step_xyz
+                incr['z'] = -step_xyz
 
         elif key == "U":
-            incr['R'] = step_RPY
+                incr['R'] = step_RPY
         elif key == "J":
-            incr['R'] = -step_RPY
+                incr['R'] = -step_RPY
         elif key == "I":
-            incr['P'] = step_RPY
+                incr['P'] = step_RPY
         elif key == "K":
-            incr['P'] = -step_RPY
+                incr['P'] = -step_RPY
         elif key == "O":
-            incr['Y'] = step_RPY
+                incr['Y'] = step_RPY
         elif key == "L":
-            incr['Y'] = -step_RPY
+                incr['Y'] = -step_RPY
         return incr
 
     def incr_has_xyz(self, incr: dict) -> bool:
@@ -257,8 +343,10 @@ class MainWindow(qtbase.QApp):
         （即按住 A，只会触发一次 keyPressEvent，不会连续触发，松开也是只触发一次）
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
+        self.check_arm()
         key = event.text().upper()
-        print(f"press {key}")
+        # print(f"press {key}")
+        self.ui.ctl_state.setText(f"按下 {key}")
 
         if event.key() == qtbase.qt_keys.Key_F5:
             self.reload()
@@ -267,6 +355,7 @@ class MainWindow(qtbase.QApp):
 
         pose = self.get_pose()
         incr = self.get_incr(key)
+        print(f"incr={incr}")
 
         if key == "G":
             self.arm.gozero()
@@ -308,7 +397,6 @@ class MainWindow(qtbase.QApp):
 
         if not event.isAutoRepeat():
             # self.add_key(key)
-
             if self.VERBOSE:
                 print(f"keyPressEvent {event}")
             # incr = self.get_empty_incr()
@@ -316,12 +404,13 @@ class MainWindow(qtbase.QApp):
         # return super().keyPressEvent(event)
     def keyReleaseEvent(self, event: qtbase.QKeyEvent):
         # return super().keyReleaseEvent(event)
-        ...
+        # self.check_arm()
+        self.ui.ctl_state.setText("暂无控制状态")
 
 
     def close_ready(self):
         ...
-    
+
     
 def main():
     qapp = qtbase.QApplication(sys.argv)
