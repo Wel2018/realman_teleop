@@ -1,8 +1,12 @@
+import os
 import sys
 import threading
 import time
-import numpy as np
+import json
+import requests
 from rich import print
+from toolbox.comm.server_echo import ServerEcho
+from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg, logger
@@ -11,24 +15,16 @@ from .bgtask.realman_arm import RealmanArmClient
 from .bgtask.realman_arm import RealmanArmTask
 
 
-USE_SPACEMOUSE = 0
-USE_ARM = 1
+APPCFG = q_appcfg.APPCFG_DICT
+if APPCFG['HOTRELOAD']:
+    import jurigged
+    jurigged.watch("./")
 
-# ----------------------------
-# 常量 / 配置
-# ----------------------------
-# DEFAULT_IP = "192.168.10.19"
-# DEFAULT_PORT = 8080
-
-# 控制参数（可按需调整）
-# SCALE_XYZ = 0.2
-# SCALE_RPY = 0.3
-# ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
-# LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
-
-# if q_appcfg.APPCFG_DICT['HOTRELOAD']:
-#     import jurigged
-#     jurigged.watch("./")
+API_IP = APPCFG['API_IP']
+API_PORT = APPCFG['API_PORT']
+API_PRE = "http://{API_IP}:{API_PORT}"
+spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
+spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
 
 
 class SharedData:
@@ -75,6 +71,7 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_spacemouse_stop, self.spacemouse_stop)
         self.bind_clicked(ui.btn_arm_connect, self.arm_connect)
         self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
+        self.bind_clicked(ui.btn_setting, self.setting)
         
         # 遥操作控制步长改变
         # 默认速度
@@ -107,7 +104,117 @@ class MainWindow(qtbase.QApp):
                 setattr(self, 'rot_vel', round(val,3))
         )
 
+        # 定时器: 每秒检查一次 spacemouse_usable 的值，判断当前 3d 鼠标是否可用，可以介入机械臂的控制
+        # 0->1 触发 spacemouse_start
+        # 1->0 触发 spacemouse_stop
+        self.ui.spacemouse_usable.setChecked(bool(0))
+        self.spacemouse_usable = bool(0)
+        # self.space_mouse_use_robot = 0
+
+        self.ui.msg.setText(f"API Server: {API_IP}:{API_PORT}")
+        self.echo = ServerEcho()
+
+        # 监听 spacemouse 可用状态
+        # 开发模式：spacemouse_usable 勾选框手动触发
+        # b生产模式：通过 api 共享状态触发，和网页端搭配实现
+
+        # 开发模式
+        if spacemouse_trigger_dev:
+            self.add_timer(
+                 "spacemouse_trigger_dev", 
+                 spacemouse_usage_intv, 
+                 self.spacemouse_trigger_dev, 1)
+            # self.add_log("spacemouse_trigger: dev", color="green")
+            self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: dev")
+        
+        # 部署模式
+        else:
+            timeout = self.echo.ping(API_IP)
+            if timeout < 1e3:
+                self.add_timer(
+                     "spacemouse_trigger_prod", 
+                     spacemouse_usage_intv, 
+                     self.spacemouse_trigger_prod, 1)
+                self.add_log(f"spacemouse_trigger: prod, timeout={timeout} ms", color="green")
+                self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: prod")
+            else:  # 超时
+                self.add_log("API Server 无法连接，启用开发模式", color="red")
+                self.add_timer(
+                     "spacemouse_trigger_dev", 
+                     spacemouse_usage_intv, 
+                     self.spacemouse_trigger_dev, 1)
+                # self.add_log("spacemouse_trigger: dev", color="green")
+                self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: dev")
+
+        # 机械臂实例
+        self.arm = RealmanArmClient()
+
+        # init ok
+        self.add_log("初始化完成", color="green")
+
+    def _spacemouse_update_param(self, k="spacemouse_status", v={}):
+        # 上传参数
+        data = requests.post(f"{API_PRE}/api/v1/hardware/robot/spacemouse/update", json={
+             k: v
+            #  "spacemouse": {
+                #   "a": time.time(),
+                #   "b": time.time(),
+            #  }
+        })
+        res = json.loads(data.text)
+        # update {"code":200,"message":"状态已更新","data":{"updated_fields":["spacemouse"]}}
+        print(f"spacemouse_update_param: {res}")
+
+    def _spacemouse_get_shared_data(self):
+        """获取和 spacemouse 有关的全局共享变量"""
+        # {"code":200,"message":"success","data":{"key":"robot","value":{"space_mouse_use_robot":true,"spacemouse":{"a":1762915702.7545369,"b":1762915702.7545369}}}}
+        # 获取共享变量
+        data = requests.get(f"{API_PRE}/api/v1/system/shared/state?key=robot")
+        res = json.loads(data.text)
+        k = res['data']['key']
+        v = res['data']['value']
+        print(f"state {v}")
+
+    def _spacemouse_check_usable(self):
+        """检查是否为遥操作模式"""
+        data = requests.get(f"{API_PRE}/api/v1/hardware/robot/spacemouse/usable")
+        res = json.loads(data.text)
+        spacemouse_usable = res['data']['spacemouse_usable']
+        print(f"spacemouse_usable: {spacemouse_usable}")
+        return spacemouse_usable
+
+    def spacemouse_trigger_prod(self):
+        """定时器回调，生产模式"""
+        spacemouse_usable = self._spacemouse_check_usable()
+        self.ui.spacemouse_usable.setChecked(spacemouse_usable)
+        # self._spacemouse_update_param(v={})
+        # self._spacemouse_get_shared_data()
+
+    def spacemouse_trigger_dev(self):
+        """定时器回调，开发模式"""
+        now = self.ui.spacemouse_usable.isChecked()
+        prev = self.spacemouse_usable
+        # 0-1
+        if not prev and now:
+            print(f"spacemouse_trigger: {prev} -> {now}")
+            self.arm_connect()
+            self.spacemouse_start()
+            self.spacemouse_usable = now
+        elif prev and not now:
+            print(f"spacemouse_trigger: {prev} -> {now}")
+            self.spacemouse_stop()
+            self.arm_disconnect()
+            self.spacemouse_usable = now
+        else:
+             ...
+
+
     def arm_connect(self):
+        """机械臂连接"""
+        if self.arm.is_connected:
+            self.add_log("机械臂已经连接")
+            return
+        
         ip = self.ui.arm_ip.text()
         self.arm.connect(ip)
         if self.arm.is_connected:
@@ -124,6 +231,11 @@ class MainWindow(qtbase.QApp):
             self.ui.label_arm.setStyleSheet("color: orange; background-color: #03db6b;")
 
     def arm_disconnect(self):
+        """机械臂断开连接"""
+        if not self.arm.is_connected:
+            self.add_log("机械臂已经断开连接")
+            return
+        
         # 检查鼠标服务是否关闭
         if self.is_spacemouse_running:
              self.spacemouse_stop()
@@ -133,12 +245,6 @@ class MainWindow(qtbase.QApp):
         self.arm.disconnect()
         self.add_log("机械臂已断开", color='green')
         self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
-
-    def load_device(self):
-        if USE_ARM:
-            self.arm = RealmanArmClient()
-        if USE_SPACEMOUSE:
-            self.spacemouse_start()
     
     def update_msg(self):
         """更新机械臂状态信息"""
@@ -194,7 +300,7 @@ class MainWindow(qtbase.QApp):
     def spacemouse_start(self):
         self.check_arm()
         if self.th.get(self.TH_CTL_MODE, None) is not None:
-            self.add_log("SpaceMouse 服务已启动，跳过", color='yellow')
+            self.add_log("SpaceMouse 服务已经启动")
             return
 
         self.add_log("SpaceMouse 服务启动", color='green')
@@ -226,7 +332,11 @@ class MainWindow(qtbase.QApp):
 
     def spacemouse_stop(self):
         self.check_arm()
-        self.add_log("SpaceMouse 服务退出", color='yellow')
+        if not self.is_spacemouse_running:
+            self.add_log("SpaceMouse 服务已经退出")
+            return
+        
+        self.add_log("SpaceMouse 服务退出", color="green")
         self.stop_th(self.TH_CTL_MODE)
         self.stop_th("arm_task")
         self.th.pop(self.TH_CTL_MODE, None)
@@ -234,6 +344,10 @@ class MainWindow(qtbase.QApp):
         self.ui.label_spacemouse.setStyleSheet("color: red; background-color: #f4cce4;")
         self.is_spacemouse_running = 0
 
+    def setting(self):
+         """打开配置"""
+         b = os.path.dirname(__file__)
+         open_local_file(os.path.join(b, "appcfg.yaml"), 1)
 
     def __init__(self, parent = None):
         ui = self.ui = Ui_DemoWindow()
@@ -241,7 +355,6 @@ class MainWindow(qtbase.QApp):
         self.pre_init()
         self.init(ui_logger=ui.txt_log, logger=logger)
         self.post_init()
-        self.load_device()
 
     def check_arm(self):
         if not self.arm.is_connected:
@@ -347,9 +460,17 @@ class MainWindow(qtbase.QApp):
         （即按住 A，只会触发一次 keyPressEvent，不会连续触发，松开也是只触发一次）
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
-        self.check_arm()
         key = event.text().upper()
         # print(f"press {key}")
+        if not key in [
+             "G", 
+             "W", "A", "S", "D",
+             "U", "I", "O",
+             "J", "K", "L",
+        ]:
+             return
+        
+        self.check_arm()
         self.ui.ctl_state.setText(f"按下 {key}")
 
         if event.key() == qtbase.qt_keys.Key_F5:

@@ -8,7 +8,7 @@
     <x>0</x>
     <y>0</y>
     <width>911</width>
-    <height>402</height>
+    <height>473</height>
    </rect>
   </property>
   <property name="font">
@@ -98,6 +98,24 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QCheckBox" name="spacemouse_usable">
+              <property name="text">
+               <string>spacemouse_usable</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="spacemouse_trigger_mode">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
            <layout class="QHBoxLayout" name="horizontalLayout_2">
             <item>
              <widget class="QPushButton" name="btn_gripper">
@@ -109,7 +127,7 @@
             <item>
              <widget class="QPushButton" name="btn_setting">
               <property name="enabled">
-               <bool>false</bool>
+               <bool>true</bool>
               </property>
               <property name="toolTip">
                <string>修改快捷键和初始化虚拟环境状态</string>
@@ -128,6 +146,16 @@
               </property>
               <property name="flat">
                <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_rec">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="text">
+               <string>录制轨迹</string>
               </property>
              </widget>
             </item>
