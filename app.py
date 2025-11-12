@@ -124,6 +124,10 @@ class MainWindow(qtbase.QApp):
             self.ui.label_arm.setStyleSheet("color: orange; background-color: #03db6b;")
 
     def arm_disconnect(self):
+        # 检查鼠标服务是否关闭
+        if self.is_spacemouse_running:
+             self.spacemouse_stop()
+        # 断开机械臂
         self.arm.is_connected = 0
         self.remove_timer("timer_update_msg")
         self.arm.disconnect()

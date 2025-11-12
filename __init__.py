@@ -7,8 +7,8 @@ from toolbox.core.logbase import get_logger
 q_appcfg = qtbase.QAppConfig(
     name = "Realman 遥操作数据采集程序",
     name_en = "Realman Teleop",
-    date="2025-09-02",
-    version = "1.0.0",
+    date="2025-11-12",
+    version = "1.1.0",
     fontsize = 14,
     slot="realman_teleop",
     APPCFG_DICT=qtbase.get_appcfg(__file__),
