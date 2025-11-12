@@ -1,10 +1,21 @@
 # 重构版：RealmanArm client + task
 # 依赖：Robotic_Arm, numpy, rich
+# 官方文档：https://develop.realman-robotics.com/robot/apipython/classes/roboticArm/
+# pip install Robotic_Arm (当前使用版本：1.1.1)
+
 import time
 from Robotic_Arm.rm_robot_interface import *  # type: ignore
 import numpy as np
 from rich import print
 from typing import List, Tuple, Dict, Any, Optional
+from .. import q_appcfg
+
+APPCFG = q_appcfg.APPCFG_DICT
+arm_speed = APPCFG['arm_speed']
+arm_zero_joint = APPCFG['arm_zero_joint']
+arm_gripper_force = APPCFG['arm_gripper_force']
+arm_gripper_speed = APPCFG['arm_gripper_speed']
+
 
 # ----------------------------
 # numpy 旋转矩阵（更高效）
@@ -132,11 +143,13 @@ class RealmanArmClient:
         # 初始化回零位置（保留原行为）
         # self.gozero()
         self.is_connected = 1
+        self.gripper_open()
+        self.is_gripper_opened = 1
 
     def gozero(self):
         # 使用较短的参数调用，保留原意
         try:
-            self.robot.rm_movej([116, 45, -120, 110, 25, -87], 20, 0, 0, 1)
+            self.robot.rm_movej(arm_zero_joint, arm_speed, 0, 0, 1)
         except Exception as e:
             print("[error] gozero failed:", e)
 
@@ -152,13 +165,19 @@ class RealmanArmClient:
 
     def gripper_open(self):
         try:
-            return self.robot.rm_set_gripper_release(500, True, 10)
+            ret = self.robot.rm_set_gripper_release(arm_gripper_speed, True, 10)
+            print(f"gripper_open: {ret}")
+            self.is_gripper_opened = 1
+            return ret
         except Exception as e:
             print("[warn] gripper_open failed:", e)
 
     def gripper_close(self):
         try:
-            return self.robot.rm_set_gripper_pick(500, 200, True, 10)
+            ret = self.robot.rm_set_gripper_pick(arm_gripper_speed, arm_gripper_force, True, 10)
+            print(f"gripper_close: {ret}")
+            self.is_gripper_opened = 0
+            return ret
         except Exception as e:
             print("[warn] gripper_close failed:", e)
 
@@ -194,7 +213,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
         self.spacemouse_th = spacemouse_th
         self.spacemouse_th.sig_data.connect(self.on_spacemouse_btn_clicked)
         self.arm = arm
-        self.is_gripper_open = True  # True = open
+        # self.is_gripper_open = True  # True = open
         self.is_run = False
         
         # 控制参数（可按需调整）
@@ -208,15 +227,15 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
         if state['gripper']:
             printc("gripper toggle")
-            # self.set_gripper()
+            self.set_gripper()
         
         if state['gozero']:
             printc("gozero")
             self.arm.gozero()
 
     def set_gripper(self):
-        self.is_gripper_open = not self.is_gripper_open
-        if self.is_gripper_open:
+        # self.is_gripper_open = not self.is_gripper_open
+        if not self.arm.is_gripper_opened:
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()

@@ -25,6 +25,10 @@ API_PORT = APPCFG['API_PORT']
 API_PRE = "http://{API_IP}:{API_PORT}"
 spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
 spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
+vel_linear_keyboard = APPCFG['vel_linear_keyboard']
+vel_angular_keyboard = APPCFG['vel_angular_keyboard']
+vel_linear_spaceouse = APPCFG['vel_linear_spaceouse']
+vel_angular_spaceouse = APPCFG['vel_angular_spaceouse']
 
 
 class SharedData:
@@ -72,13 +76,14 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_arm_connect, self.arm_connect)
         self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
         self.bind_clicked(ui.btn_setting, self.setting)
+        self.bind_clicked(ui.btn_gripper, self.set_gripper)
         
         # 遥操作控制步长改变
         # 默认速度
-        self.ui.step_posi.setValue(0.01)  # 键盘速度控制，线速度
-        self.ui.step_angle.setValue(0.1)  # 键盘速度控制，角速度
-        self.ui.step_posi2.setValue(0.2)  # 鼠标速度控制，线速度
-        self.ui.step_angle2.setValue(0.3)  # 鼠标速度控制，角速度
+        self.ui.step_posi.setValue(vel_linear_keyboard)  # 键盘速度控制，线速度
+        self.ui.step_angle.setValue(vel_angular_keyboard)  # 键盘速度控制，角速度
+        self.ui.step_posi2.setValue(vel_linear_spaceouse)  # 鼠标速度控制，线速度
+        self.ui.step_angle2.setValue(vel_angular_spaceouse)  # 鼠标速度控制，角速度
 
         # 线速度、角速度
         self.pos_vel = ui.step_posi.value()
@@ -151,6 +156,14 @@ class MainWindow(qtbase.QApp):
 
         # init ok
         self.add_log("初始化完成", color="green")
+
+
+    def set_gripper(self):
+        self.check_arm()
+        if not self.arm.is_gripper_opened:
+            self.arm.gripper_open()
+        else:
+            self.arm.gripper_close()
 
     def _spacemouse_update_param(self, k="spacemouse_status", v={}):
         # 上传参数
@@ -347,7 +360,7 @@ class MainWindow(qtbase.QApp):
     def setting(self):
          """打开配置"""
          b = os.path.dirname(__file__)
-         open_local_file(os.path.join(b, "appcfg.yaml"), 1)
+         open_local_file(os.path.join(b, "appcfg.yaml"), is_relative=1)
 
     def __init__(self, parent = None):
         ui = self.ui = Ui_DemoWindow()
@@ -464,7 +477,8 @@ class MainWindow(qtbase.QApp):
         # print(f"press {key}")
         if not key in [
              "G", 
-             "W", "A", "S", "D",
+             "W", "A", "S", "D", 
+             "Q", "Z",
              "U", "I", "O",
              "J", "K", "L",
         ]:
@@ -493,11 +507,12 @@ class MainWindow(qtbase.QApp):
         if self.incr_has_xyz(incr):
             pose_ = self.get_new_pose(pose, incr)
             ret = self.arm.robot.rm_movep_canfd(self.pose_to_list(pose_), False, 1, 60)
-
-            print("xyz", "-"*50)
-            print(f"ret={ret}, incr={incr}")
-            print(f"new_pose={pose_}")
-            return
+            
+            if self.VERBOSE:
+                print("xyz", "-"*50)
+                print(f"ret={ret}, incr={incr}")
+                print(f"new_pose={pose_}")
+                return
         
         # 处理 RPY 轴 --------------------------
         if self.incr_has_RPY(incr):
@@ -514,10 +529,11 @@ class MainWindow(qtbase.QApp):
                 raise ValueError
             
             ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
-        
-            print("RPY", "-"*50)
-            print(f"ret={ret}, incr={incr}")
-            print(f"ret={ret}, new_pose={new_pose}")
+
+            if self.VERBOSE:
+                print("RPY", "-"*50)
+                print(f"ret={ret}, incr={incr}")
+                print(f"ret={ret}, new_pose={new_pose}")
 
 
         if not event.isAutoRepeat():

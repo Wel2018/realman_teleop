@@ -1,7 +1,7 @@
 ##################################
 # realman_teleop app config
 # author: wel2018
-# date: 2025-08-26
+# date: 2025-11-12
 ##################################
 
 # 热重载
@@ -25,3 +25,22 @@ spacemouse_trigger_dev: 1
 
 # spacemouse 可用状态获取时间间隔（ms）
 spacemouse_usage_intv: 1000
+
+# 机械臂零位
+# arm_zero_joint: [116, 45, -120, 110, 25, -87]
+arm_zero_joint: [-0.02, 40.43, -111.56, 0.085, -48.88, -0.08]
+
+# 机械臂移动速度
+arm_speed: 15
+
+# 机械臂夹爪的夹持力度
+# speed : int 手爪夹取速度，范围 1~1000，无单位量纲
+# force : int 力控阈值，范围：50~1000，无单位量纲
+arm_gripper_force: 1000
+arm_gripper_speed: 1000
+
+# 速度初始值
+vel_linear_keyboard: 0.01  # 键盘速度控制，线速度
+vel_angular_keyboard: 0.1  # 键盘速度控制，角速度
+vel_linear_spaceouse: 0.2  # 鼠标速度控制，线速度
+vel_angular_spaceouse: 0.3  # 鼠标速度控制，角速度
