@@ -22,7 +22,7 @@ if APPCFG['HOTRELOAD']:
 
 API_IP = APPCFG['API_IP']
 API_PORT = APPCFG['API_PORT']
-API_PRE = "http://{API_IP}:{API_PORT}"
+API_PRE = f"http://{API_IP}:{API_PORT}"
 spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
 spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
 vel_linear_keyboard = APPCFG['vel_linear_keyboard']
@@ -30,19 +30,6 @@ vel_angular_keyboard = APPCFG['vel_angular_keyboard']
 vel_linear_spaceouse = APPCFG['vel_linear_spaceouse']
 vel_angular_spaceouse = APPCFG['vel_angular_spaceouse']
 
-
-class SharedData:
-    """共享数据"""
-    incr = {
-        "x": .0,
-        "y": .0, 
-        "z": .0,
-        "R": .0,
-        "P": .0,
-        "Y": .0,
-        "gripper": 0, # 0 表示没有动作，1 表示打开夹爪，-1 表示关闭夹爪
-    }
-    incr_bak = {}
 
 
 class MainWindow(qtbase.QApp):
@@ -202,6 +189,8 @@ class MainWindow(qtbase.QApp):
         self.ui.spacemouse_usable.setChecked(spacemouse_usable)
         # self._spacemouse_update_param(v={})
         # self._spacemouse_get_shared_data()
+        self.spacemouse_trigger_dev()
+
 
     def spacemouse_trigger_dev(self):
         """定时器回调，开发模式"""
