@@ -301,7 +301,7 @@ class MainWindow(qtbase.QApp):
 
     def spacemouse_start(self):
         self.check_arm()
-        if self.th.get(self.TH_CTL_MODE, None) is not None:
+        if self.task_manager.is_task_running(self.TH_CTL_MODE):
             self.add_log("SpaceMouse 服务已经启动")
             return
 
@@ -341,8 +341,6 @@ class MainWindow(qtbase.QApp):
         self.add_log("SpaceMouse 服务退出", color="green")
         self.stop_th(self.TH_CTL_MODE)
         self.stop_th("arm_task")
-        self.th.pop(self.TH_CTL_MODE, None)
-        self.th.pop("arm_task", None)
         self.ui.label_spacemouse.setStyleSheet("color: red; background-color: #f4cce4;")
         self.is_spacemouse_running = 0
 
