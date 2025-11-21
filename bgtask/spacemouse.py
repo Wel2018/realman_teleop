@@ -3,7 +3,65 @@
 import time
 import pyspacemouse
 from toolbox.qt import qtbase
+from toolbox.qt.common.debug import enable_debugpy
 # from .. import q_appcfg
+
+from collections import deque
+import time
+
+
+class ButtonClickDetector:
+    """
+    基于 deque 的单击/双击检测。
+    每次完整的 press->release（1->0）视为一次点击。
+    """
+    def __init__(self, name: str, double_interval_ms: int = 250):
+        self.name = name
+        self.double_interval = double_interval_ms / 1000.0
+        self.click_times = deque()   # 存放每次完整点击的时间戳
+        self.last_raw = 0            # 上一次原始值（用于检测 1->0）
+        self.pending_single = None   # 记录等待确认的单击事件时间戳
+
+    def update(self, raw: int, now: float) -> dict | None:
+        """
+        raw: 当前按钮状态 (0/1)
+        now: 当前时间戳（秒）
+        """
+        event = None
+
+        # 检测一次完整点击：press(1) -> release(0)
+        if self.last_raw == 1 and raw == 0:
+            self.click_times.append(now)
+
+        self.last_raw = raw
+
+        # —— 无点击则不用处理 ——
+        if not self.click_times:
+            return None
+
+        # —— 处理点击队列 ——
+        while len(self.click_times) >= 2:
+            t1 = self.click_times[0]
+            t2 = self.click_times[1]
+
+            if t2 - t1 <= self.double_interval:
+                # 两次点击在间隔内 → 双击
+                self.click_times.clear()
+                return {'type': 'double', 'btn': self.name}
+            else:
+                # 间隔太长 → t1 必然是单击
+                self.click_times.popleft()
+                return {'type': 'single', 'btn': self.name}
+
+        # —— 只有一次点击，需要等待查看是否会出现第二次 ——
+        t1 = self.click_times[0]
+
+        if now - t1 > self.double_interval:
+            # 超时 → 单击成立
+            self.click_times.clear()
+            return {'type': 'single', 'btn': self.name}
+
+        return None
 
 
 class SpaceMouse:
@@ -28,7 +86,7 @@ class SpaceMouse:
     - spacemouse 的蓝牙连接需要 linux 驱动支持，在 Ubuntu 上官方已经弃更
     - usb 接收器需要近距离连接否则会丢包，使用体验不好，建议使用有线连接，稳定可靠
     
-    ### todo
+    ### next
     
     - [x] 支持侧键功能进行夹爪控制
     
@@ -134,6 +192,8 @@ class SpaceMouse:
         self.devtype = devtype
         self.cur_state = {}
 
+        # 最近的按钮“原始”状态缓存（用于边沿检测）
+        self._last_buttons_raw: dict[str, int] = {}
 
     def _get_button_state(self, state: pyspacemouse.SpaceNavigator):
         """获取鼠标按钮状态"""
@@ -144,17 +204,17 @@ class SpaceMouse:
             btn3 = state.buttons[_start_id+2]
             btn4 = state.buttons[_start_id+3]
             return {
-                "gripper": btn1,  # [1] 用来控制夹爪开闭
-                "gozero": btn2,   # [2] 用来控制回到零位
-                "collect": btn3,  # [3] 用来控制数据录制开关
-                "custom": btn4,   # [4] 用来控制自定义功能
+                "btn1": btn1,  # [1] 用来控制夹爪开闭
+                "btn2": btn2,   # [2] 用来控制回到零位
+                "btn3": btn3,  # [3] 用来控制数据录制开关
+                "btn4": btn4,   # [4] 用来控制自定义功能
             }
         elif self.devtype == "SpaceMouse Compact":
             btn1 = state.buttons[0]
             btn2 = state.buttons[1]
             return {
-                "gripper": btn1,
-                "gozero": btn2,
+                "btn1": btn1,
+                "btn2": btn2,
             }
         else:
             raise NotImplementedError
@@ -174,12 +234,16 @@ class SpaceMouse:
             return 0
     
         ret = {}
-        ret['gripper'] = _trigger_01_impl('gripper')
-        ret['gozero'] = _trigger_01_impl('gozero')
+        ret['btn1'] = _trigger_01_impl('btn1')
+        ret['btn2'] = _trigger_01_impl('btn2')
+        
+        # pro 版本有更多功能键
         if "SpaceMouse Pro" in self.devtype:
-            ret['collect'] = _trigger_01_impl('collect')
+            ret['btn3'] = _trigger_01_impl('btn3')
+            ret['btn4'] = _trigger_01_impl('btn4')
         return ret
     
+
     def read_state(self):
         state: pyspacemouse.SpaceNavigator = pyspacemouse.read()  # type: ignore
         # R: roll 滚转，沿着 x 轴
@@ -200,9 +264,13 @@ class SpaceMouse:
         for k in self.POSE_KEYS:
             cur_state[k] *= self.speed_ratio
         
-        cur_state.update(self._trigger_01(state))
-        # eg:
-        # {'x': 0.0, 'y': 0.0, 'z': 0.0, 'R': 0.0, 'P': 0.0, 'Y': -0.0, 'gripper': 0, 'gozero': 0}
+
+        # 把按键原始值放进去（0/1）
+        try:
+            btns = self._get_button_state(state)
+        except NotImplementedError:
+            btns = {}
+        cur_state.update(btns)
 
         # round:3
         for k in cur_state.keys():
@@ -211,14 +279,32 @@ class SpaceMouse:
 
 
 class SpaceMouseListener(qtbase.QAsyncTask):
-    # sig_data = qtbase.Signal(dict)
+    sig_data = qtbase.Signal(dict)
     
-    def __init__(self, conf: dict = {}, devtype="SpaceMouse Compact", label=None):
+    def __init__(
+        self, 
+        conf: dict = {}, 
+        devtype="SpaceMouse Compact", 
+        ui_label=None,
+        double_interval_ms: int = 250*2
+    ):
         super().__init__(conf)
         self.device = SpaceMouse(devtype)
         self.cur_state = {}
-        self.label = label
-    
+        self.ui_label = ui_label
+        self.is_run = 0
+
+        # 为每个可能的按键创建状态机
+        # 按需只启用 SpaceMouse 实际返回的键
+        self.btn_names = ["btn1", "btn2"]
+        self.btn_sms: dict[str, ButtonClickDetector] = {}
+        for name in self.btn_names:
+            self.btn_sms[name] = ButtonClickDetector(name, double_interval_ms)
+
+        # 控制 UI 发信号的节流：按钮事件直接发，位姿/移动事件不发（保持你原来的设计）
+        # 如果想对移动事件按时间节流，也可在此添加 last_emit_time 机制
+
+    # @enable_debugpy(1)
     def run(self):
         self.is_run = 1
         while self.is_run:
@@ -226,27 +312,74 @@ class SpaceMouseListener(qtbase.QAsyncTask):
             state = self.cur_state = self.device.read_state()
             # print(f"cur_state: {self.cur_state}")
             # self.sig_data.emit(state)
-            # self.label.setText(str(state)) # type: ignore
+            if self.ui_label:
+                self.ui_label.setText(str(state)) # type: ignore
 
             # 问题定位：
             # 高频率的信号释放会导致进入缓冲队列，主线程的事件循环按照次序处理，会导致延迟问题
             # 3d 鼠标的动作到主线程存在 1-2s 的延迟，操作不跟手，因此只把侧键事件发给主线程
             # 鼠标移动事件不释放信号，而是直接在后台处理
-            # # {'x': 0.0, 'y': 0.0, 'z': 0.0, 'R': 0.0, 'P': 0.0, 'Y': -0.0, 'gripper': 0, 'gozero': 0}
-            if state['x'] != 0 or state['y'] != 0 or state['z'] != 0 or \
-               state['R'] != 0 or state['P'] != 0 or state['Y'] != 0:
-                # self.sig_data.emit(state)
-                # print(f"cur_state: {self.cur_state}")
-                # self.label.setText(str(state)) # type: ignore
-                ...
-
-            elif state['gripper'] == 1 or state['gozero'] == 1:
-                self.sig_data.emit(state)
-                # print(f"cur_state: {self.cur_state}")
-                # self.label.setText(str(state)) # type: ignore
-
+            if self.device.devtype == "SpaceMouse Compact":
+                self.process_side_btn_click(state)
+            elif self.device.devtype in "SpaceMouse Pro Wireless":
+                self.process_side_btn_click_for_pro(state)
             else:
+                pass
+
+            # 如果既不是移动也不是按钮变化，则继续循环（不阻塞）
+            # 注意：高频循环需短暂 sleep 以让出 CPU（并避免 100% 占用）
+            # 你可根据实际需要调整，这里 sleep 0.001 -> ~1000Hz
+            time.sleep(0.001)
+
+
+    def process_side_btn_click(self, state: dict):
+        """处理普通 SpaceMouse Compact 款的侧键点击事件，设配了双击检测"""
+        now = time.monotonic()
+        # 处理按钮事件：只处理本次返回的按键名集合
+        for btn_name, sm in self.btn_sms.items():
+            if btn_name not in state:
                 continue
+
+            # if (state['gripper'] == 0 and btn_name == 'gripper') or \
+            #     (state['gozero'] == 0 and btn_name == 'gozero'):
+            #     continue
+            # print(f"state={state}, btn_name={btn_name}")
+            raw = int(state[btn_name])
+
+            ev = sm.update(raw, now)
+            if ev is not None:
+                # print(f"SpaceMouse 按钮事件：{ev}, now={now}")
+                # 构造发给主线程的数据结构（你可以自定义字段）
+                payload = {
+                    'event': ev['type'],   # 'single' or 'double'
+                    'btn': ev['btn'],      # 'btn1' / 'btn2' / ...
+                    'state': state         # 当前整帧状态（含位姿）
+                }
+                # 立即发信号到主线程处理按钮事件（不会 flood，因为仅在状态边沿发生）
+                self.sig_data.emit(payload)
+
+
+    def process_side_btn_click_for_pro(self, state: dict):
+        """处理 Pro 版本的侧键点击事件，只处理单击功能"""
+        btn_names = ['btn1', 'btn2', 'btn3', 'btn4']
+        btn_state = [state[name] for name in btn_names]
+
+        # 仅在有按钮被按下时处理
+        if any(btn_state):
+            click_btn_name = ""
+            for btn_name in btn_names:
+                if state[btn_name]:
+                    click_btn_name = btn_name
+            
+            # print(f"SpaceMouse 按钮事件：{ev}, now={now}")
+            # 构造发给主线程的数据结构（你可以自定义字段）
+            payload = {
+                'event': 'single',      # 'single' or 'double'
+                'btn': click_btn_name,  # 'btn1' / 'btn2' / ...
+                'state': state          # 当前整帧状态（含位姿）
+            }
+            # 立即发信号到主线程处理按钮事件
+            self.sig_data.emit(payload)
 
 
 ######################################################
@@ -281,13 +414,28 @@ def test_spacemouse_listener():
             self._layout.addWidget(self.msg)
             self.setLayout(self._layout)
 
-            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", label=self.msg)
+            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", ui_label=self.msg)
             self.spacemouse_listener.sig_data.connect(self.on_spacemouse_data)
             self.spacemouse_listener.start()
 
         def on_spacemouse_data(self, data: dict):
-            print("SpaceMouse Data:", data)
-            self.msg.setText(str(data))
+            # data 示例： {'event':'double','btn':'gripper','state':{...}}
+            print("-"*20)
+            print(f"time={time.time()} data={data}")
+            if data['event'] == 'single' and data['btn'] == 'btn1':
+                # 单击夹爪：切换夹爪
+                # self.toggle_gripper()
+                print("单击夹爪")
+            elif data['event'] == 'double' and data['btn'] == 'btn1':
+                # 双击夹爪：执行路径规划
+                # self.run_path_planning()
+                print("双击夹爪")
+            elif data['event'] == 'single' and data['btn'] == 'btn2':
+                # self.move_to_home()
+                print("单击回零")
+            elif data['event'] == 'double' and data['btn'] == 'btn2':
+                # self.emergency_stop()
+                print("双击回零")
 
         def __del__(self):
             self.spacemouse_listener.stop()

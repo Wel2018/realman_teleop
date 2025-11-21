@@ -8,6 +8,8 @@ from Robotic_Arm.rm_robot_interface import *  # type: ignore
 import numpy as np
 from rich import print
 from typing import List, Tuple, Dict, Any, Optional
+
+from toolbox.qt.common.debug import enable_debugpy
 from .. import q_appcfg
 
 APPCFG = q_appcfg.APPCFG_DICT
@@ -222,16 +224,39 @@ class RealmanArmTask(qtbase.QAsyncTask):
         self.ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
         self.LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
 
-    def on_spacemouse_btn_clicked(self, state: dict):
-        printc(f"on_spacemouse_btn_clicked: {state}")
-
-        if state['gripper']:
-            printc("gripper toggle")
+    # @enable_debugpy(1)
+    def on_spacemouse_btn_clicked(self, payload: dict):
+        """处理 spacemouse 按钮事件，`payload` 格式: 
+        ```
+        'event': 'single' / 'double',
+        'btn': 'btn1' / 'btn2' ...,
+        'state': {...}
+        ```
+        """
+        printc(f"on_spacemouse_btn_clicked: {payload}")
+        
+        event_type = payload.get('event')  # 'single' or 'double'
+        btn_name = payload.get('btn')  # 'gripper' or 'gozero'
+        
+        # 左键单击 -> 执行 gripper
+        if event_type == 'single' and btn_name == 'btn1':
+            printc("左键单击: gripper toggle")
             self.set_gripper()
         
-        if state['gozero']:
-            printc("gozero")
+        # 右键单击 -> 执行 gozero
+        elif event_type == 'single' and btn_name == 'btn2':
+            printc("右键单击: gozero")
             self.arm.gozero()
+        
+        # 左键双击 -> 执行 func
+        elif event_type == 'double' and btn_name == 'btn1':
+            printc("左键双击: func1")
+            self.func1()
+        
+        # 右键双击 -> 执行 func
+        elif event_type == 'double' and btn_name == 'btn2':
+            printc("右键双击: func1")
+            self.func1()
 
     def set_gripper(self):
         # self.is_gripper_open = not self.is_gripper_open
@@ -239,6 +264,41 @@ class RealmanArmTask(qtbase.QAsyncTask):
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()
+    
+    def func1(self):
+        """自定义功能函数，双击左键时执行"""
+        printc("执行自定义功能 func1")
+
+        # 预放置位置，小桌板上面一段距离
+        approach_pose = [-0.36, 0.197, 0.528, -2.608, -1.531, 0.9]
+        _arm = self.arm.robot
+        ret = _arm.rm_movej_p(approach_pose, 15, 0, 0, 1)
+
+        ret = _arm.rm_set_teach_frame(1)
+        # 在小桌板上面下移15cm
+        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_X_DIR_E, -0.16, 15, 1)
+        ret = _arm.rm_set_teach_frame(0)
+
+        # 打开夹爪
+        self.arm.gripper_open()
+
+        ret = _arm.rm_set_teach_frame(1)
+        # # 松开夹爪收，后撤12cm
+        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_Z_DIR_E, -0.15, 15, 1)
+        ret = _arm.rm_set_teach_frame(0)
+
+        # 回到默认位置
+        # ret = _arm.rm_movej_p([-0.3, 0, 0.6, 3.142, -1.047, 3.142], 10, 0, 0, 1)
+        ret = _arm.rm_movec(
+            [-0.357, 0.015, 0.516, -0.386, -0.778, -0.955], 
+            [-0.3, 0, 0.6, 3.142, -1.047, 3.142],
+             20, 0, 0, 0, 0)
+        printc(f"movec ret={ret}")
+
+    def func2(self):
+        """自定义功能函数，双击左键时执行"""
+        printc("执行自定义功能 func2")
+        pass
 
     def _all_zero(self, cur_state: Dict[str, float]) -> bool:
         # 快速判断是否全零（只关心 motion 相关键）
@@ -387,7 +447,7 @@ def test_rm_arm_task():
             self._layout.addWidget(self.msg)
             self.setLayout(self._layout)
 
-            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", label=self.msg)
+            self.spacemouse_listener = SpaceMouseListener(devtype="SpaceMouse Compact", ui_label=self.msg)
             self.spacemouse_listener.sig_data.connect(self.on_spacemouse_data)
             self.spacemouse_listener.start()
 
