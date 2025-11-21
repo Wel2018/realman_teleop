@@ -22,6 +22,7 @@ if APPCFG['HOTRELOAD']:
 
 API_IP = APPCFG['API_IP']
 API_PORT = APPCFG['API_PORT']
+ARM_IP = APPCFG['ARM_IP']
 API_PRE = f"http://{API_IP}:{API_PORT}"
 spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
 spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
@@ -217,6 +218,7 @@ class MainWindow(qtbase.QApp):
             self.add_log("机械臂已经连接")
             return
         
+        self.ui.arm_ip.setText(ARM_IP)
         ip = self.ui.arm_ip.text()
         self.arm.connect(ip)
         if self.arm.is_connected:

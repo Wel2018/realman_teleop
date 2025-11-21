@@ -20,6 +20,10 @@ BENCHMARK: 0
 API_IP: 192.168.10.54
 API_PORT: 8878
 
+# 机械臂 IP
+ARM_IP: 192.168.10.18
+ARM_PORT: 8080
+
 # spacemouse 监听器（开发模式/生产模式）
 spacemouse_trigger_dev: 1
 
