@@ -1,7 +1,7 @@
 ##################################
 # realman_teleop app config
 # author: wel2018
-# date: 2025-11-12
+# date: 2025-12-15
 ##################################
 
 # 热重载
@@ -17,7 +17,7 @@ THREAD_DEBUG: 0
 BENCHMARK: 0
 
 # 服务地址
-API_IP: 192.168.10.54
+API_IP: 127.0.0.1
 API_PORT: 8878
 
 # 机械臂 IP
@@ -48,3 +48,11 @@ vel_linear_keyboard: 0.01  # 键盘速度控制，线速度
 vel_angular_keyboard: 0.1  # 键盘速度控制，角速度
 vel_linear_spaceouse: 0.2  # 鼠标速度控制，线速度
 vel_angular_spaceouse: 0.3  # 鼠标速度控制，角速度
+
+
+# 双击自定义功能 double_click_back
+approach_pose: [-0.36, 0.197, 0.528, -2.608, -1.531, 0.9]
+x_dir_e: -0.16  # 在小桌板上面下移
+z_dir_e: -0.15  # 松开夹爪收，后撤
+go_zero_pose_via: [-0.357, 0.015, 0.516, -0.386, -0.778, -0.955]
+go_zero_pose_to: [-0.3, 0, 0.6, 3.142, -1.047, 3.142]

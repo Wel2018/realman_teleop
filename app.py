@@ -102,9 +102,10 @@ class MainWindow(qtbase.QApp):
         # 1->0 触发 spacemouse_stop
         self.ui.spacemouse_usable.setChecked(bool(0))
         self.spacemouse_usable = bool(0)
-        # self.space_mouse_use_robot = 0
+        self.spacemouse_usable_msg = ""
 
         self.ui.msg.setText(f"API Server: {API_IP}:{API_PORT}")
+        self.ui.arm_ip.setText(ARM_IP)
         self.echo = ServerEcho()
 
         # 监听 spacemouse 可用状态
@@ -181,7 +182,12 @@ class MainWindow(qtbase.QApp):
         data = requests.get(f"{API_PRE}/api/v1/hardware/robot/spacemouse/usable")
         res = json.loads(data.text)
         spacemouse_usable = res['data']['spacemouse_usable']
-        print(f"spacemouse_usable: {spacemouse_usable}")
+        # print(f"spacemouse_usable: {spacemouse_usable}")
+        spacemouse_usable_msg = f"spacemouse_usable: {spacemouse_usable}"
+        if spacemouse_usable_msg != self.spacemouse_usable_msg:
+            self.spacemouse_usable_msg = spacemouse_usable_msg
+            self.add_log(spacemouse_usable_msg, color="green")
+            print(f"spacemouse_usable: {spacemouse_usable}")
         return spacemouse_usable
 
     def spacemouse_trigger_prod(self):

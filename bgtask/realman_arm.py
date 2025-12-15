@@ -217,6 +217,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
         self.arm = arm
         # self.is_gripper_open = True  # True = open
         self.is_run = False
+        self.joystick_enable = bool(1)   # 是否启用手柄
         
         # 控制参数（可按需调整）
         self.SCALE_XYZ = 0.2
@@ -234,6 +235,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
         ```
         """
         printc(f"on_spacemouse_btn_clicked: {payload}")
+        self.set_joystick_enable(0)
         
         event_type = payload.get('event')  # 'single' or 'double'
         btn_name = payload.get('btn')  # 'gripper' or 'gozero'
@@ -251,12 +253,22 @@ class RealmanArmTask(qtbase.QAsyncTask):
         # 左键双击 -> 执行 func
         elif event_type == 'double' and btn_name == 'btn1':
             printc("左键双击: func1")
-            self.func1()
+            self.double_click_back()
         
         # 右键双击 -> 执行 func
         elif event_type == 'double' and btn_name == 'btn2':
             printc("右键双击: func1")
-            self.func1()
+            self.double_click_back()
+
+        self.set_joystick_enable(1)
+        self.msleep(500)
+
+    def set_joystick_enable(self, enable: int):
+        self.joystick_enable = bool(enable)
+        if enable:
+            printc("启用摇杆")
+        else:
+            printc("禁用摇杆")
 
     def set_gripper(self):
         # self.is_gripper_open = not self.is_gripper_open
@@ -265,18 +277,18 @@ class RealmanArmTask(qtbase.QAsyncTask):
         else:
             self.arm.gripper_close()
     
-    def func1(self):
+    def double_click_back(self):
         """自定义功能函数，双击左键时执行"""
-        printc("执行自定义功能 func1")
+        printc("执行自定义功能 double_click_back")
 
         # 预放置位置，小桌板上面一段距离
-        approach_pose = [-0.36, 0.197, 0.528, -2.608, -1.531, 0.9]
+        approach_pose = APPCFG['approach_pose']
         _arm = self.arm.robot
         ret = _arm.rm_movej_p(approach_pose, 15, 0, 0, 1)
 
         ret = _arm.rm_set_teach_frame(1)
         # 在小桌板上面下移15cm
-        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_X_DIR_E, -0.16, 15, 1)
+        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_X_DIR_E, APPCFG['x_dir_e'], 15, 1)
         ret = _arm.rm_set_teach_frame(0)
 
         # 打开夹爪
@@ -284,20 +296,20 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
         ret = _arm.rm_set_teach_frame(1)
         # # 松开夹爪收，后撤12cm
-        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_Z_DIR_E, -0.15, 15, 1)
+        ret = _arm.rm_set_pos_step(rm_pos_teach_type_e.RM_Z_DIR_E, APPCFG['z_dir_e'], 15, 1)
         ret = _arm.rm_set_teach_frame(0)
 
         # 回到默认位置
         # ret = _arm.rm_movej_p([-0.3, 0, 0.6, 3.142, -1.047, 3.142], 10, 0, 0, 1)
         ret = _arm.rm_movec(
-            [-0.357, 0.015, 0.516, -0.386, -0.778, -0.955], 
-            [-0.3, 0, 0.6, 3.142, -1.047, 3.142],
-             20, 0, 0, 0, 0)
+            APPCFG['go_zero_pose_via'], 
+            APPCFG['go_zero_pose_to'],
+             20, 0, 0, 0, 1)
         printc(f"movec ret={ret}")
 
-    def func2(self):
+    def double_click_front(self):
         """自定义功能函数，双击左键时执行"""
-        printc("执行自定义功能 func2")
+        printc(f"执行自定义功能 double_click_front")
         pass
 
     def _all_zero(self, cur_state: Dict[str, float]) -> bool:
@@ -312,6 +324,11 @@ class RealmanArmTask(qtbase.QAsyncTask):
         while self.is_run:
             self.msleep(30)
             cur_state = self.spacemouse_th.cur_state
+
+            if not self.joystick_enable:
+                self.msleep(self.LOOP_SLEEP_MS)
+                # printc("当前摇杆被禁用，等待摇杆启用...")
+                continue
 
             # # 按钮类命令（优先处理）
             # if cur_state.get('gripper'):
