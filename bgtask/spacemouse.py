@@ -2,6 +2,7 @@
 
 import time
 import pyspacemouse
+from toolbox.core.color_print import printc
 from toolbox.qt import qtbase
 from toolbox.qt.common.debug import enable_debugpy
 # from .. import q_appcfg
@@ -180,7 +181,7 @@ class SpaceMouse:
             self.is_ok = 1
         else:
             self.is_ok = 0
-            print("空间鼠标未连接")
+            printc(f"遥操作外设 {devtype} 未连接")
         # self.is_run = 0
         self.speed_ratio = speed_ratio
         self.btn_state = {
@@ -310,7 +311,6 @@ class SpaceMouseListener(qtbase.QAsyncTask):
         while self.is_run:
             # self.msleep(1)
             state = self.cur_state = self.device.read_state()
-            # print(f"cur_state: {self.cur_state}")
             # self.sig_data.emit(state)
             if self.ui_label:
                 self.ui_label.setText(str(state)) # type: ignore
@@ -339,16 +339,10 @@ class SpaceMouseListener(qtbase.QAsyncTask):
         for btn_name, sm in self.btn_sms.items():
             if btn_name not in state:
                 continue
-
-            # if (state['gripper'] == 0 and btn_name == 'gripper') or \
-            #     (state['gozero'] == 0 and btn_name == 'gozero'):
-            #     continue
-            # print(f"state={state}, btn_name={btn_name}")
             raw = int(state[btn_name])
 
             ev = sm.update(raw, now)
             if ev is not None:
-                # print(f"SpaceMouse 按钮事件：{ev}, now={now}")
                 # 构造发给主线程的数据结构（你可以自定义字段）
                 payload = {
                     'event': ev['type'],   # 'single' or 'double'
@@ -371,7 +365,6 @@ class SpaceMouseListener(qtbase.QAsyncTask):
                 if state[btn_name]:
                     click_btn_name = btn_name
             
-            # print(f"SpaceMouse 按钮事件：{ev}, now={now}")
             # 构造发给主线程的数据结构（你可以自定义字段）
             payload = {
                 'event': 'single',      # 'single' or 'double'
@@ -393,7 +386,7 @@ def test_spacemouse():
     while 1:
         try:
             state = spacemouse.read_state()
-            print(state)
+            printc(f"state={state}")
             time.sleep(1/1000)
         except KeyboardInterrupt:
             break
@@ -420,22 +413,22 @@ def test_spacemouse_listener():
 
         def on_spacemouse_data(self, data: dict):
             # data 示例： {'event':'double','btn':'gripper','state':{...}}
-            print("-"*20)
-            print(f"time={time.time()} data={data}")
+            printc("-"*20)
+            printc(f"time={time.time()} data={data}")
             if data['event'] == 'single' and data['btn'] == 'btn1':
                 # 单击夹爪：切换夹爪
                 # self.toggle_gripper()
-                print("单击夹爪")
+                printc("单击夹爪")
             elif data['event'] == 'double' and data['btn'] == 'btn1':
                 # 双击夹爪：执行路径规划
                 # self.run_path_planning()
-                print("双击夹爪")
+                printc("双击夹爪")
             elif data['event'] == 'single' and data['btn'] == 'btn2':
                 # self.move_to_home()
-                print("单击回零")
+                printc("单击回零")
             elif data['event'] == 'double' and data['btn'] == 'btn2':
                 # self.emergency_stop()
-                print("双击回零")
+                printc("双击回零")
 
         def __del__(self):
             self.spacemouse_listener.stop()

@@ -9,7 +9,10 @@ import numpy as np
 from rich import print
 from typing import List, Tuple, Dict, Any, Optional
 
+from toolbox.core.color_print import printc
+from .dexhand import DexterousHand
 from toolbox.qt.common.debug import enable_debugpy
+from toolbox.qt import qtbase
 from .. import q_appcfg
 
 APPCFG = q_appcfg.APPCFG_DICT
@@ -100,88 +103,122 @@ def pose_by_rot_cached(
     # 3) 转回 pose
     return _matrix3_to_pose(algo, R_new, pos)
 
+
 # ----------------------------
 # Realman 客户端（封装机器人/算法实例）
 # ----------------------------
-class RealmanArmClient:
-    
+class RealmanArmClient(qtbase.QObject):
+    sig_move_finger = qtbase.Signal(int, int) # index: int, position: int
+
     def __init__(self, arm_model: rm_robot_arm_model_e = rm_robot_arm_model_e.RM_MODEL_RM_63_III_E):
+        super().__init__()
         # 缓存 Algo 实例，避免频繁创建
         force_type = rm_force_type_e.RM_MODEL_RM_B_E  # 参考原代码
         self.algo = Algo(arm_model, force_type)  # type: ignore
         self.is_connected = 0
 
     def connect(self, ip, port=8080):
+        self.ip = ip
+        self.port = port
         self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
         self.handle = self.robot.rm_create_robot_arm(ip, port)
-        print(f"RobotArm ID: {getattr(self.handle, 'id', None)}")
+        printc(f"RobotArm ID: {getattr(self.handle, 'id', None)}")
 
         # 打印并设置 tool frame（保留原行为）
         try:
             total_tool = self.robot.rm_get_total_tool_frame()
-            print(f"rm_get_total_tool_frame={total_tool}")
+            printc(f"rm_get_total_tool_frame={total_tool}")
             # 切换到指定 tool frame（如果需要，可改为参数化）
             # self.robot.rm_change_tool_frame("hhltest2")
         except Exception as e:
-            print("[warn] tool frame error:", e)
+            printc(f"[warn] tool frame error: {e}")
 
         # 打印软件信息（保持原逻辑）
         try:
             software_info = self.robot.rm_get_arm_software_info()
             if software_info[0] == 0:
                 info = software_info[1]
-                print("\n================== Arm Software Information ==================")
-                print("Arm Model: ", info.get('product_version'))
-                print("Algorithm Library Version: ", info.get('algorithm_info', {}).get('version'))
-                print("Control Layer Software Version: ", info.get('ctrl_info', {}).get('version'))
-                print("Dynamics Version: ", info.get('dynamic_info', {}).get('model_version'))
-                print("Planning Layer Software Version: ", info.get('plan_info', {}).get('version'))
-                print("==============================================================\n")
+                product_version = info.get('product_version')
+                algorithm_info = info.get('algorithm_info', {}).get('version')
+                ctrl_info = info.get('ctrl_info', {}).get('version')
+                dynamic_info = info.get('dynamic_info', {}).get('version')
+                plan_info = info.get('plan_info', {}).get('version')
+
+                printc("================== 机械臂软件信息 ==================")
+                printc(f"机械臂模型： {product_version}")
+                printc(f"算法库版本: {algorithm_info}")
+                printc(f"控制层软件版本: {ctrl_info}")
+                printc(f"Dynamics: {dynamic_info}")
+                printc(f"路径规划层软件版本: {plan_info}")
+                printc("==================================================")
             else:
-                print("\nFailed to get arm software information, Error code: ", software_info[0], "\n")
+                printc(f"\n无法获取机械臂软件信息, Error code: {software_info[0]}")
         except Exception as e:
-            print("[warn] get_arm_software_info failed:", e)
+            printc(f"[warn] get_arm_software_info failed: {e}")
 
         # 初始化回零位置（保留原行为）
         # self.gozero()
         self.is_connected = 1
+        self.is_hand_opened = 1   # 夹爪/灵巧手打开状态
+        self.is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
+
+        if self.is_hand_mode:
+            self.hand_init()
+        else:
+            self.gripper_init()
+
+    def hand_init(self):
+        printc("正在初始化灵巧手...")
+        self.hand = DexterousHand(self.robot)
+        self.hand.sig_move_finger.connect(self.sig_move_finger.emit)
+        self.hand_open()
+
+    def gripper_init(self):
+        printc("正在初始化夹爪...")
         self.gripper_open()
-        self.is_gripper_opened = 1
 
     def gozero(self):
         # 使用较短的参数调用，保留原意
         try:
             self.robot.rm_movej(arm_zero_joint, arm_speed, 0, 0, 1)
         except Exception as e:
-            print("[error] gozero failed:", e)
+            printc(f"[error] gozero failed: {e}")
 
     def move_p_canfd(self, pose: List[float]):
         # 包装 movep 调用并打印（原来函数名保留）
         try:
             ret = self.robot.rm_movep_canfd(pose, False, 1, 60)
-            print(f"MOVE_P: {pose}, ret={ret}")
+            printc(f"MOVE_P: {pose}, ret={ret}")
             return ret
         except Exception as e:
-            print("[error] move_p_canfd failed:", e)
+            printc(f"[error] move_p_canfd failed: {e}")
             return None
+
+    def hand_open(self):
+        self.hand.open_all()
+        self.is_hand_opened = 1
+
+    def hand_close(self):
+        self.hand.close_all()
+        self.is_hand_opened = 0
 
     def gripper_open(self):
         try:
             ret = self.robot.rm_set_gripper_release(arm_gripper_speed, True, 10)
-            print(f"gripper_open: {ret}")
-            self.is_gripper_opened = 1
+            printc(f"gripper_open: {ret}")
+            self.is_hand_opened = 1
             return ret
         except Exception as e:
-            print("[warn] gripper_open failed:", e)
+            printc(f"[warn] gripper_open failed: {e}")
 
     def gripper_close(self):
         try:
             ret = self.robot.rm_set_gripper_pick(arm_gripper_speed, arm_gripper_force, True, 10)
-            print(f"gripper_close: {ret}")
-            self.is_gripper_opened = 0
+            printc(f"gripper_close: {ret}")
+            self.is_hand_opened = 0
             return ret
         except Exception as e:
-            print("[warn] gripper_close failed:", e)
+            printc(f"[warn] gripper_close failed: {e}")
 
     def get_pose(self) -> Tuple[int, Dict[str, Any]]:
         """返回 rm_get_current_arm_state 的原始结果 (ret, data)"""
@@ -272,7 +309,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
     def set_gripper(self):
         # self.is_gripper_open = not self.is_gripper_open
-        if not self.arm.is_gripper_opened:
+        if not self.arm.is_hand_opened:
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()
@@ -330,29 +367,11 @@ class RealmanArmTask(qtbase.QAsyncTask):
                 # printc("当前摇杆被禁用，等待摇杆启用...")
                 continue
 
-            # # 按钮类命令（优先处理）
-            # if cur_state.get('gripper'):
-            #     print("[action] gripper toggle")
-            #     self.set_gripper()
-            #     # 防抖：等待引脚释放（避免重复触发）
-            #     self.msleep(100)
-            #     continue
-
-            # if cur_state.get('gozero'):
-            #     print("[action] gozero")
-            #     self.arm.gozero()
-            #     self.msleep(200)
-            #     continue
-
-            # if self._all_zero(cur_state):
-            #     self.msleep(LOOP_SLEEP_MS)
-            #     continue
-
             # 获取当前机械臂状态（ret, data）
             ret, data = self.arm.get_pose()
             if ret != 0 or not data or 'pose' not in data:
                 # 获取失败时短暂等待并跳过
-                print("[warn] get_pose failed or missing data, ret=", ret)
+                printc(f"[warn] get_pose failed or missing data, ret={ret}")
                 self.msleep(self.LOOP_SLEEP_MS)
                 continue
 
@@ -377,7 +396,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
                 continue
 
             # 处理线性平移
-            print(f"SCALE_XYZ={self.SCALE_XYZ}")
+            printc(f"SCALE_XYZ={self.SCALE_XYZ}")
             if axis_choice in ('x','y','z'):
                 # 更新位置并下发 movep
                 new_pose = [
@@ -390,9 +409,9 @@ class RealmanArmTask(qtbase.QAsyncTask):
                 ]
                 try:
                     ret = self.arm.robot.rm_movep_canfd(new_pose, False, 1, 60)
-                    print("[movep xyz] ret=", ret, "new_pose=", new_pose)
+                    printc("[movep xyz] ret=", ret, f"new_pose={new_pose}")
                 except Exception as e:
-                    print("[error] movep_xyz exception:", e)
+                    printc(f"[error] movep_xyz exception: {e}")
                 continue
 
             # 处理姿态旋转（耦合）
@@ -422,9 +441,9 @@ class RealmanArmTask(qtbase.QAsyncTask):
                     )
                     # 下发 movep 命令，保持平滑（保持 current pos 平移参数）
                     ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
-                    print("[movep rpy] ret=", ret, "axis=", rot_axis, "theta=", theta)
+                    printc(f"[movep rpy] ret={ret} axis={rot_axis} theta={theta}")
                 except Exception as e:
-                    print("[error] movep_rpy exception:", e)
+                    printc(f"[error] movep_rpy exception: {e}")
                 continue
 
     def stop(self):
@@ -443,7 +462,7 @@ def test_rm_client():
     while 1:
         try:
             state = arm.get_pose()
-            print(state)
+            printc(f"state={state}")
             time.sleep(1/1000)
         except KeyboardInterrupt:
             break
@@ -469,7 +488,7 @@ def test_rm_arm_task():
             self.spacemouse_listener.start()
 
         def on_spacemouse_data(self, data: dict):
-            print("SpaceMouse Data:", data)
+            printc(f"SpaceMouse Data: {data}")
             self.msg.setText(str(data))
 
         def __del__(self):

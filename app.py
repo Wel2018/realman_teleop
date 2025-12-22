@@ -6,6 +6,7 @@ import json
 import requests
 from rich import print
 from toolbox.comm.server_echo import ServerEcho
+from toolbox.core.color_print import printc
 from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
@@ -64,8 +65,21 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_arm_connect, self.arm_connect)
         self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
         self.bind_clicked(ui.btn_setting, self.setting)
-        self.bind_clicked(ui.btn_gripper, self.set_gripper)
-        
+
+        if APPCFG['is_hand_mode']:
+            self.bind_clicked(ui.btn_gripper, self.set_hand)
+            self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
+            self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
+            self.bind_clicked(ui.btn_4finge_pick, self._4finge_pick)
+            self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
+            self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
+        else:
+            self.bind_clicked(ui.btn_gripper, self.set_gripper)
+            qtbase.set_enable(ui.btn_2finge_pick, 0)
+            qtbase.set_enable(ui.btn_2finge_release, 0)
+            qtbase.set_enable(ui.btn_4finge_pick, 0)
+            qtbase.set_enable(ui.btn_4finge_release, 0)
+
         # 遥操作控制步长改变
         # 默认速度
         self.ui.step_posi.setValue(vel_linear_keyboard)  # 键盘速度控制，线速度
@@ -76,8 +90,6 @@ class MainWindow(qtbase.QApp):
         # 线速度、角速度
         self.pos_vel = ui.step_posi.value()
         self.rot_vel = ui.step_angle.value()
-        # self.pos_vel2 = ui.step_posi2.value()
-        # self.rot_vel2 = ui.step_angle2.value()
         self.is_spacemouse_running = 0
 
         self.max_duration = 1000*60
@@ -146,13 +158,60 @@ class MainWindow(qtbase.QApp):
         # init ok
         self.add_log("初始化完成", color="green")
 
+    def rotate_thumb(self):
+        v = self.ui.rotate_thumb.value()
+        self.arm.hand.rotate_thumb(v)
+        self.ui.angle_f0.setValue(v)
+
+    def _get_arm_hand_curr(self):
+        self.is_t_run = 1
+        while self.is_t_run:
+            curr = self.arm.hand.get_current_positions()
+            printc(f"curr={curr}")
+            if curr is None:
+                continue
+            self.ui.pos_f0.setValue(curr[0])
+            self.ui.pos_f1.setValue(curr[1])
+            self.ui.pos_f2.setValue(curr[2])
+            self.ui.pos_f3.setValue(curr[3])
+            self.ui.pos_f4.setValue(curr[4])
+            time.sleep(1)
 
     def set_gripper(self):
         self.check_arm()
-        if not self.arm.is_gripper_opened:
+        if not self.arm.is_hand_opened:
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()
+
+    def set_hand(self):
+        self.check_arm()
+        if not self.arm.is_hand_opened:
+            self.arm.hand_open()
+        else:
+            self.arm.hand_close()
+
+    def _2finge_release(self):
+        self.arm.hand.open_2finger()
+        time.sleep(0.5)
+        self.arm.hand.rotate_thumb(0)
+
+    def _2finge_pick(self):
+        self.arm.hand.rotate_thumb(90)
+        time.sleep(0.5)
+        self.arm.hand.close_2finger()
+
+    def _4finge_release(self):
+        self.arm.hand.open_finger(0)
+        time.sleep(0.5)
+        self.arm.hand.open_4finger()
+        self.arm.hand.rotate_thumb(0)
+
+    def _4finge_pick(self):
+        self.arm.hand.close_4finger()
+        self.arm.hand.rotate_thumb(100)
+        time.sleep(0.5)
+        self.arm.hand.close_finger(0)
 
     def _spacemouse_update_param(self, k="spacemouse_status", v={}):
         # 上传参数
@@ -165,7 +224,7 @@ class MainWindow(qtbase.QApp):
         })
         res = json.loads(data.text)
         # update {"code":200,"message":"状态已更新","data":{"updated_fields":["spacemouse"]}}
-        print(f"spacemouse_update_param: {res}")
+        printc(f"spacemouse_update_param: {res}")
 
     def _spacemouse_get_shared_data(self):
         """获取和 spacemouse 有关的全局共享变量"""
@@ -175,19 +234,19 @@ class MainWindow(qtbase.QApp):
         res = json.loads(data.text)
         k = res['data']['key']
         v = res['data']['value']
-        print(f"state {v}")
+        printc(f"state {v}")
 
     def _spacemouse_check_usable(self):
         """检查是否为遥操作模式"""
         data = requests.get(f"{API_PRE}/api/v1/hardware/robot/spacemouse/usable")
         res = json.loads(data.text)
         spacemouse_usable = res['data']['spacemouse_usable']
-        # print(f"spacemouse_usable: {spacemouse_usable}")
+        # printc(f"spacemouse_usable: {spacemouse_usable}")
         spacemouse_usable_msg = f"spacemouse_usable: {spacemouse_usable}"
         if spacemouse_usable_msg != self.spacemouse_usable_msg:
             self.spacemouse_usable_msg = spacemouse_usable_msg
             self.add_log(spacemouse_usable_msg, color="green")
-            print(f"spacemouse_usable: {spacemouse_usable}")
+            printc(f"spacemouse_usable: {spacemouse_usable}")
         return spacemouse_usable
 
     def spacemouse_trigger_prod(self):
@@ -205,12 +264,12 @@ class MainWindow(qtbase.QApp):
         prev = self.spacemouse_usable
         # 0-1
         if not prev and now:
-            print(f"spacemouse_trigger: {prev} -> {now}")
+            printc(f"spacemouse_trigger: {prev} -> {now}")
             self.arm_connect()
             self.spacemouse_start()
             self.spacemouse_usable = now
         elif prev and not now:
-            print(f"spacemouse_trigger: {prev} -> {now}")
+            printc(f"spacemouse_trigger: {prev} -> {now}")
             self.spacemouse_stop()
             self.arm_disconnect()
             self.spacemouse_usable = now
@@ -240,6 +299,10 @@ class MainWindow(qtbase.QApp):
             self.add_log("机械臂连接失败", color='red')
             self.ui.label_arm.setStyleSheet("color: orange; background-color: #03db6b;")
 
+        self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
+        self.t.start()
+
+
     def arm_disconnect(self):
         """机械臂断开连接"""
         if not self.arm.is_connected:
@@ -255,6 +318,9 @@ class MainWindow(qtbase.QApp):
         self.arm.disconnect()
         self.add_log("机械臂已断开", color='green')
         self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
+        if self.t.is_alive():
+            #  self.t.terminate()
+            self.is_t_run = 0
     
     def update_msg(self):
         """更新机械臂状态信息"""
@@ -469,7 +535,6 @@ class MainWindow(qtbase.QApp):
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
         key = event.text().upper()
-        # print(f"press {key}")
         if not key in [
              "G", 
              "W", "A", "S", "D", 
@@ -489,7 +554,7 @@ class MainWindow(qtbase.QApp):
 
         pose = self.get_pose()
         incr = self.get_incr(key)
-        print(f"incr={incr}")
+        printc(f"incr={incr}")
 
         if key == "G":
             self.arm.gozero()
@@ -504,9 +569,9 @@ class MainWindow(qtbase.QApp):
             ret = self.arm.robot.rm_movep_canfd(self.pose_to_list(pose_), False, 1, 60)
             
             if self.VERBOSE:
-                print("xyz", "-"*50)
-                print(f"ret={ret}, incr={incr}")
-                print(f"new_pose={pose_}")
+                printc("xyz" + "-"*50)
+                printc(f"ret={ret}, incr={incr}")
+                printc(f"new_pose={pose_}")
                 return
         
         # 处理 RPY 轴 --------------------------
@@ -526,15 +591,15 @@ class MainWindow(qtbase.QApp):
             ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
 
             if self.VERBOSE:
-                print("RPY", "-"*50)
-                print(f"ret={ret}, incr={incr}")
-                print(f"ret={ret}, new_pose={new_pose}")
+                printc("RPY" + "-"*50)
+                printc(f"ret={ret}, incr={incr}")
+                printc(f"ret={ret}, new_pose={new_pose}")
 
 
         if not event.isAutoRepeat():
             # self.add_key(key)
             if self.VERBOSE:
-                print(f"keyPressEvent {event}")
+                printc(f"keyPressEvent {event}")
             # incr = self.get_empty_incr()
 
         # return super().keyPressEvent(event)

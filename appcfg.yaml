@@ -21,7 +21,7 @@ API_IP: 127.0.0.1
 API_PORT: 8878
 
 # 机械臂 IP
-ARM_IP: 192.168.10.18
+ARM_IP: 192.168.10.19
 ARM_PORT: 8080
 
 # spacemouse 监听器（开发模式/生产模式）
@@ -29,6 +29,9 @@ spacemouse_trigger_dev: 1
 
 # spacemouse 可用状态获取时间间隔（ms）
 spacemouse_usage_intv: 1000
+
+# 0:夹爪, 1:灵巧手模式
+is_hand_mode: 1
 
 # 机械臂零位
 # arm_zero_joint: [116, 45, -120, 110, 25, -87]
