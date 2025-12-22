@@ -261,6 +261,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
         self.SCALE_RPY = 0.3
         self.ZERO_THRESHOLD = 0.001  # 认为输入为零的阈值
         self.LOOP_SLEEP_MS = 10  # 空闲时休眠（ms）
+        self.is_opened = 1
 
     # @enable_debugpy(1)
     def on_spacemouse_btn_clicked(self, payload: dict):
@@ -279,22 +280,22 @@ class RealmanArmTask(qtbase.QAsyncTask):
         
         # 左键单击 -> 执行 gripper
         if event_type == 'single' and btn_name == 'btn1':
-            printc("左键单击: gripper toggle")
-            self.set_gripper()
-        
-        # 右键单击 -> 执行 gozero
-        elif event_type == 'single' and btn_name == 'btn2':
-            printc("右键单击: gozero")
-            self.arm.gozero()
+            printc("左键单击")
+            self.single_click_front()
         
         # 左键双击 -> 执行 func
         elif event_type == 'double' and btn_name == 'btn1':
-            printc("左键双击: func1")
-            self.double_click_back()
+            printc("左键双击")
+            self.double_click_front()
+        
+        # 右键单击 -> 执行 gozero
+        elif event_type == 'single' and btn_name == 'btn2':
+            printc("右键单击")
+            self.single_click_back()
         
         # 右键双击 -> 执行 func
         elif event_type == 'double' and btn_name == 'btn2':
-            printc("右键双击: func1")
+            printc("右键双击")
             self.double_click_back()
 
         self.set_joystick_enable(1)
@@ -307,13 +308,51 @@ class RealmanArmTask(qtbase.QAsyncTask):
         else:
             printc("禁用摇杆")
 
+    def check_arm(self):
+        if not self.arm.is_connected:
+            printc("请先连接机械臂!!") 
+        assert self.arm.is_connected == 1, "请先连接机械臂"
+
     def set_gripper(self):
-        # self.is_gripper_open = not self.is_gripper_open
         if not self.arm.is_hand_opened:
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()
-    
+
+    def set_hand(self):
+        self.check_arm()
+        if not self.arm.is_hand_opened:
+            self.arm.hand_open()
+        else:
+            self.arm.hand_close()
+
+    def set_gripper_or_hand(self):
+        is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
+        if is_hand_mode:
+            self.set_hand()
+        else:
+            self.set_gripper()
+
+
+    def single_click_front(self):
+        """自定义功能函数，单击左键时执行"""
+        if APPCFG['is_hand_mode']:
+            printc("执行自定义功能 single_click_front: 设置灵巧手抓握")
+            if self.is_opened:
+                self._4finge_pick()
+                self.is_opened = 0
+            else:
+                self._4finge_release()
+                self.is_opened = 1
+        else:
+            printc("执行自定义功能 single_click_front: 设置夹爪抓握")
+            self.set_gripper()
+
+    def single_click_back(self):
+        """自定义功能函数，单击左键时执行"""
+        printc("执行自定义功能 single_click_back: 回零位")
+        self.arm.gozero()
+
     def double_click_back(self):
         """自定义功能函数，双击左键时执行"""
         printc("执行自定义功能 double_click_back")
@@ -346,8 +385,42 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
     def double_click_front(self):
         """自定义功能函数，双击左键时执行"""
-        printc(f"执行自定义功能 double_click_front")
-        pass
+        if APPCFG['is_hand_mode']:
+            printc(f"执行自定义功能 double_click_front: 设置灵巧手捏住")
+            if self.is_opened:
+                self._2finge_pick()
+                self.is_opened = 0
+            else:
+                self._2finge_release()
+                self.is_opened = 1
+        else:
+            printc(f"执行自定义功能 double_click_front: 设置夹爪捏住")
+            self.set_gripper()
+
+    def _2finge_release(self):
+        self.arm.hand.open_2finger()
+        self._hand_sleep()
+        self.arm.hand.rotate_thumb(0)
+
+    def _2finge_pick(self):
+        self.arm.hand.rotate_thumb(90)
+        self._hand_sleep()
+        self.arm.hand.close_2finger()
+
+    def _4finge_release(self):
+        self.arm.hand.open_finger(0)
+        self._hand_sleep()
+        self.arm.hand.open_4finger()
+        self.arm.hand.rotate_thumb(0)
+
+    def _4finge_pick(self):
+        self.arm.hand.close_4finger()
+        self.arm.hand.rotate_thumb(100)
+        self._hand_sleep()
+        self.arm.hand.close_finger(0)
+    
+    def _hand_sleep(self):
+        self.msleep(300)
 
     def _all_zero(self, cur_state: Dict[str, float]) -> bool:
         # 快速判断是否全零（只关心 motion 相关键）

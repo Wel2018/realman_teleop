@@ -120,7 +120,7 @@
             <item>
              <widget class="QPushButton" name="btn_gripper">
               <property name="text">
-               <string>夹爪/灵巧手</string>
+               <string>夹爪</string>
               </property>
              </widget>
             </item>

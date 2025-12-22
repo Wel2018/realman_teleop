@@ -5,6 +5,7 @@ import time
 import json
 import requests
 from rich import print
+from realman_teleop.bgtask.runner import Runner
 from toolbox.comm.server_echo import ServerEcho
 from toolbox.core.color_print import printc
 from toolbox.core.file_op import open_local_file
@@ -67,14 +68,15 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_setting, self.setting)
 
         if APPCFG['is_hand_mode']:
-            self.bind_clicked(ui.btn_gripper, self.set_hand)
+            self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
             self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
             self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
             self.bind_clicked(ui.btn_4finge_pick, self._4finge_pick)
             self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
             self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
+            ui.btn_gripper.setText("灵巧手")
         else:
-            self.bind_clicked(ui.btn_gripper, self.set_gripper)
+            self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
             qtbase.set_enable(ui.btn_2finge_pick, 0)
             qtbase.set_enable(ui.btn_2finge_release, 0)
             qtbase.set_enable(ui.btn_4finge_pick, 0)
@@ -118,45 +120,25 @@ class MainWindow(qtbase.QApp):
 
         self.ui.msg.setText(f"API Server: {API_IP}:{API_PORT}")
         self.ui.arm_ip.setText(ARM_IP)
-        self.echo = ServerEcho()
-
-        # 监听 spacemouse 可用状态
-        # 开发模式：spacemouse_usable 勾选框手动触发
-        # b生产模式：通过 api 共享状态触发，和网页端搭配实现
-
-        # 开发模式
-        if spacemouse_trigger_dev:
-            self.add_timer(
-                 "spacemouse_trigger_dev", 
-                 spacemouse_usage_intv, 
-                 self.spacemouse_trigger_dev, 1)
-            # self.add_log("spacemouse_trigger: dev", color="green")
-            self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: dev")
-        
-        # 部署模式
-        else:
-            timeout = self.echo.ping(API_IP)
-            if timeout < 1e3:
-                self.add_timer(
-                     "spacemouse_trigger_prod", 
-                     spacemouse_usage_intv, 
-                     self.spacemouse_trigger_prod, 1)
-                self.add_log(f"spacemouse_trigger: prod, timeout={timeout} ms", color="green")
-                self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: prod")
-            else:  # 超时
-                self.add_log("API Server 无法连接，启用开发模式", color="red")
-                self.add_timer(
-                     "spacemouse_trigger_dev", 
-                     spacemouse_usage_intv, 
-                     self.spacemouse_trigger_dev, 1)
-                # self.add_log("spacemouse_trigger: dev", color="green")
-                self.ui.spacemouse_trigger_mode.setText("spacemouse_trigger: dev")
 
         # 机械臂实例
         self.arm = RealmanArmClient()
+        self.runner = Runner(ui.spacemouse_trigger_mode, ui.spacemouse_usable)
+        self.runner.sig_on.connect(self.runner_on)
+        self.runner.sig_off.connect(self.runner_off)
+        self.runner.sig_msg.connect(self.add_log)
+        self.runner.start()
 
         # init ok
         self.add_log("初始化完成", color="green")
+
+    def runner_on(self):
+        self.arm_connect()
+        self.spacemouse_start()
+
+    def runner_off(self):
+        self.spacemouse_stop()
+        self.arm_disconnect()
 
     def rotate_thumb(self):
         v = self.ui.rotate_thumb.value()
@@ -191,91 +173,37 @@ class MainWindow(qtbase.QApp):
         else:
             self.arm.hand_close()
 
+    def set_gripper_or_hand(self):
+        is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
+        if is_hand_mode:
+            self.set_hand()
+        else:
+            self.set_gripper()
+
     def _2finge_release(self):
         self.arm.hand.open_2finger()
-        time.sleep(0.5)
+        self._hand_sleep()
         self.arm.hand.rotate_thumb(0)
 
     def _2finge_pick(self):
         self.arm.hand.rotate_thumb(90)
-        time.sleep(0.5)
+        self._hand_sleep()
         self.arm.hand.close_2finger()
 
     def _4finge_release(self):
         self.arm.hand.open_finger(0)
-        time.sleep(0.5)
+        self._hand_sleep()
         self.arm.hand.open_4finger()
         self.arm.hand.rotate_thumb(0)
 
     def _4finge_pick(self):
         self.arm.hand.close_4finger()
         self.arm.hand.rotate_thumb(100)
-        time.sleep(0.5)
+        self._hand_sleep()
         self.arm.hand.close_finger(0)
 
-    def _spacemouse_update_param(self, k="spacemouse_status", v={}):
-        # 上传参数
-        data = requests.post(f"{API_PRE}/api/v1/hardware/robot/spacemouse/update", json={
-             k: v
-            #  "spacemouse": {
-                #   "a": time.time(),
-                #   "b": time.time(),
-            #  }
-        })
-        res = json.loads(data.text)
-        # update {"code":200,"message":"状态已更新","data":{"updated_fields":["spacemouse"]}}
-        printc(f"spacemouse_update_param: {res}")
-
-    def _spacemouse_get_shared_data(self):
-        """获取和 spacemouse 有关的全局共享变量"""
-        # {"code":200,"message":"success","data":{"key":"robot","value":{"space_mouse_use_robot":true,"spacemouse":{"a":1762915702.7545369,"b":1762915702.7545369}}}}
-        # 获取共享变量
-        data = requests.get(f"{API_PRE}/api/v1/system/shared/state?key=robot")
-        res = json.loads(data.text)
-        k = res['data']['key']
-        v = res['data']['value']
-        printc(f"state {v}")
-
-    def _spacemouse_check_usable(self):
-        """检查是否为遥操作模式"""
-        data = requests.get(f"{API_PRE}/api/v1/hardware/robot/spacemouse/usable")
-        res = json.loads(data.text)
-        spacemouse_usable = res['data']['spacemouse_usable']
-        # printc(f"spacemouse_usable: {spacemouse_usable}")
-        spacemouse_usable_msg = f"spacemouse_usable: {spacemouse_usable}"
-        if spacemouse_usable_msg != self.spacemouse_usable_msg:
-            self.spacemouse_usable_msg = spacemouse_usable_msg
-            self.add_log(spacemouse_usable_msg, color="green")
-            printc(f"spacemouse_usable: {spacemouse_usable}")
-        return spacemouse_usable
-
-    def spacemouse_trigger_prod(self):
-        """定时器回调，生产模式"""
-        spacemouse_usable = self._spacemouse_check_usable()
-        self.ui.spacemouse_usable.setChecked(spacemouse_usable)
-        # self._spacemouse_update_param(v={})
-        # self._spacemouse_get_shared_data()
-        self.spacemouse_trigger_dev()
-
-
-    def spacemouse_trigger_dev(self):
-        """定时器回调，开发模式"""
-        now = self.ui.spacemouse_usable.isChecked()
-        prev = self.spacemouse_usable
-        # 0-1
-        if not prev and now:
-            printc(f"spacemouse_trigger: {prev} -> {now}")
-            self.arm_connect()
-            self.spacemouse_start()
-            self.spacemouse_usable = now
-        elif prev and not now:
-            printc(f"spacemouse_trigger: {prev} -> {now}")
-            self.spacemouse_stop()
-            self.arm_disconnect()
-            self.spacemouse_usable = now
-        else:
-             ...
-
+    def _hand_sleep(self):
+        time.sleep(0.3)
 
     def arm_connect(self):
         """机械臂连接"""
