@@ -411,7 +411,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
         self.arm.hand.open_finger(0)
         self._hand_sleep()
         self.arm.hand.open_4finger()
-        self.arm.hand.rotate_thumb(0)
+        self.arm.hand.rotate_thumb(100)
 
     def _4finge_pick(self):
         self.arm.hand.close_4finger()
