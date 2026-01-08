@@ -29,6 +29,7 @@ class Runner(qtbase.QAsyncTask):
         self.ui_spacemouse_trigger_mode = ui_spacemouse_trigger_mode   # ui.QLabel
         self.ui_spacemouse_usable = ui_spacemouse_usable   # ui.QCheckBox
         self.spacemouse_usable = bool(0)
+        self.spacemouse_usable_msg = ""
 
         # 监听 spacemouse 可用状态
         # 开发模式：spacemouse_usable 勾选框手动触发
@@ -153,11 +154,11 @@ class Runner(qtbase.QAsyncTask):
             func = self.spacemouse_trigger_dev
         else:
             func = self.spacemouse_trigger_prod
-        printc(f"func={func}")
+        printc(f"spacemouse_trigger={func}")
 
         while self.is_run:
             try:
                 func()
             except Exception as e:
-                printc(f"网络连接超时")
+                printc(f"spacemouse_trigger err={e}")
             self.msleep(spacemouse_usage_intv)
