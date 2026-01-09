@@ -119,6 +119,7 @@ class RealmanArmClient(qtbase.QObject):
         self.t_connect.start()
 
     def _connect(self, ip, port=8080):
+        from ..log import printc
         self.ip = ip
         self.port = port
         self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore

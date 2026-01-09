@@ -9,7 +9,6 @@ from realman_teleop.bgtask.runner import Runner
 from realman_teleop.log import init_logger, printc
 from loguru import logger
 from toolbox.comm.server_echo import ServerEcho
-# from . import printc
 from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
