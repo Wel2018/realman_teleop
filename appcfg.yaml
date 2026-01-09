@@ -25,7 +25,7 @@ ARM_IP: 192.168.10.18
 ARM_PORT: 8080
 
 # spacemouse 监听器（开发模式/生产模式）
-spacemouse_trigger_dev: 0
+spacemouse_trigger_dev: 1
 
 # spacemouse 可用状态获取时间间隔（ms）
 spacemouse_usage_intv: 1000

@@ -15,7 +15,7 @@ from . import q_appcfg, logger
 from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 from .bgtask.realman_arm import RealmanArmTask
-
+from .util import set_layout_visible
 
 APPCFG = q_appcfg.APPCFG_DICT
 if APPCFG['HOTRELOAD']:
@@ -33,6 +33,8 @@ vel_angular_keyboard = APPCFG['vel_angular_keyboard']
 vel_linear_spaceouse = APPCFG['vel_linear_spaceouse']
 vel_angular_spaceouse = APPCFG['vel_angular_spaceouse']
 
+
+echo = ServerEcho()
 
 
 class MainWindow(qtbase.QApp):
@@ -67,6 +69,7 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
         self.bind_clicked(ui.btn_setting, self.setting)
 
+        # 灵巧手模式
         if APPCFG['is_hand_mode']:
             self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
             self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
@@ -75,12 +78,17 @@ class MainWindow(qtbase.QApp):
             self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
             self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
             ui.btn_gripper.setText("灵巧手")
+
+        # 夹爪模式
         else:
             self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
             qtbase.set_enable(ui.btn_2finge_pick, 0)
             qtbase.set_enable(ui.btn_2finge_release, 0)
             qtbase.set_enable(ui.btn_4finge_pick, 0)
             qtbase.set_enable(ui.btn_4finge_release, 0)
+            
+            # 隐藏灵巧手相关的组件
+            set_layout_visible(ui.hand_layout, bool(0))
 
         # 遥操作控制步长改变
         # 默认速度
@@ -118,7 +126,7 @@ class MainWindow(qtbase.QApp):
         self.spacemouse_usable = bool(0)
         self.spacemouse_usable_msg = ""
 
-        self.ui.msg.setText(f"API Server: {API_IP}:{API_PORT}")
+        self.ui.msg.setText(f"服务地址: {API_IP}:{API_PORT}")
         self.ui.arm_ip.setText(ARM_IP)
 
         # 机械臂实例
@@ -146,6 +154,10 @@ class MainWindow(qtbase.QApp):
         self.ui.angle_f0.setValue(v)
 
     def _get_arm_hand_curr(self):
+        if not hasattr(self.arm, "hand"):
+            printc("arm 没有初始化 hand 灵巧手！")
+            return
+        
         self.is_t_run = 1
         while self.is_t_run:
             curr = self.arm.hand.get_current_positions()
@@ -210,10 +222,19 @@ class MainWindow(qtbase.QApp):
         if self.arm.is_connected:
             self.add_log("机械臂已经连接")
             return
-        
+         
         self.ui.arm_ip.setText(ARM_IP)
         ip = self.ui.arm_ip.text()
+
+        # 检查连通性
+        timeout = echo.ping(ARM_IP)
+        if timeout == echo.PING_TIMEOUT:
+            self.add_log(f"无法 ping 通 ARM_IP={ARM_IP}，请检查配置文件！", color='red')
+            return
+
+        self.add_log(f"ping={timeout} ms, ARM_IP={ARM_IP}，正在连接...")
         self.arm.connect(ip)
+
         if self.arm.is_connected:
             self.add_log("机械臂连接成功", color='green')
             self.add_timer("timer_update_msg", 200, self.update_msg, 1)
@@ -223,12 +244,14 @@ class MainWindow(qtbase.QApp):
             self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
             self.add_log("程序初始化完成", color="green")
             self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
+            
+            # 启动灵巧手状态实时获取线程
+            if APPCFG['is_hand_mode']:
+                self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
+                self.t.start()
         else:
             self.add_log("机械臂连接失败", color='red')
-            self.ui.label_arm.setStyleSheet("color: orange; background-color: #03db6b;")
-
-        self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
-        self.t.start()
+            self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
 
 
     def arm_disconnect(self):

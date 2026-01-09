@@ -122,40 +122,38 @@ class RealmanArmClient(qtbase.QObject):
         self.port = port
         self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
         self.handle = self.robot.rm_create_robot_arm(ip, port)
-        printc(f"RobotArm ID: {getattr(self.handle, 'id', None)}")
+        arm_id = getattr(self.handle, 'id', -1)
+        printc(f"RobotArm ID: {arm_id}")
+
+        if arm_id == -1:
+            printc("机械臂连接失败！")
+            printc(f"当前信息：ip={ip} port={port}")
+            return
 
         # 打印并设置 tool frame（保留原行为）
-        try:
-            total_tool = self.robot.rm_get_total_tool_frame()
-            printc(f"rm_get_total_tool_frame={total_tool}")
-            # 切换到指定 tool frame（如果需要，可改为参数化）
-            # self.robot.rm_change_tool_frame("hhltest2")
-        except Exception as e:
-            printc(f"[warn] tool frame error: {e}")
-
+        total_tool = self.robot.rm_get_total_tool_frame()
+        printc(f"rm_get_total_tool_frame={total_tool}")
+        # 切换到指定 tool frame（如果需要，可改为参数化）
+        # self.robot.rm_change_tool_frame("hhltest2")
+        
         # 打印软件信息（保持原逻辑）
-        try:
-            software_info = self.robot.rm_get_arm_software_info()
-            if software_info[0] == 0:
-                info = software_info[1]
-                product_version = info.get('product_version')
-                algorithm_info = info.get('algorithm_info', {}).get('version')
-                ctrl_info = info.get('ctrl_info', {}).get('version')
-                dynamic_info = info.get('dynamic_info', {}).get('version')
-                plan_info = info.get('plan_info', {}).get('version')
+        software_info = self.robot.rm_get_arm_software_info()
+        if software_info[0] == 0:
+            info = software_info[1]
+            product_version = info.get('product_version')
+            algorithm_info = info.get('algorithm_info', {}).get('version')
+            ctrl_info = info.get('ctrl_info', {}).get('version')
+            dynamic_info = info.get('dynamic_info', {}).get('version')
+            plan_info = info.get('plan_info', {}).get('version')
 
-                printc("================== 机械臂软件信息 ==================")
-                printc(f"机械臂模型： {product_version}")
-                printc(f"算法库版本: {algorithm_info}")
-                printc(f"控制层软件版本: {ctrl_info}")
-                printc(f"Dynamics: {dynamic_info}")
-                printc(f"路径规划层软件版本: {plan_info}")
-                printc("==================================================")
-            else:
-                printc(f"\n无法获取机械臂软件信息, Error code: {software_info[0]}")
-        except Exception as e:
-            printc(f"[warn] get_arm_software_info failed: {e}")
-
+            printc("================== 机械臂软件信息 ==================")
+            printc(f"机械臂模型： {product_version}")
+            printc(f"算法库版本: {algorithm_info}")
+            printc(f"控制层软件版本: {ctrl_info}")
+            printc(f"Dynamics: {dynamic_info}")
+            printc(f"路径规划层软件版本: {plan_info}")
+            printc("==================================================")
+            
         # 初始化回零位置（保留原行为）
         # self.gozero()
         self.is_connected = 1
