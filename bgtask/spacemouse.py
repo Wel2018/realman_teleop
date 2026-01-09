@@ -2,7 +2,7 @@
 
 import time
 import pyspacemouse
-from toolbox.core.color_print import printc
+from ..log import printc
 from toolbox.qt import qtbase
 from toolbox.qt.common.debug import enable_debugpy
 # from .. import q_appcfg

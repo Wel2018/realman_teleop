@@ -4,7 +4,7 @@ import sys
 
 import time
 from Robotic_Arm.rm_robot_interface import * # type: ignore
-from toolbox.core.color_print import printc
+from ..log import printc
 from toolbox.qt import qtbase  # type: ignore
 from .common.roh_registers_v1 import *  # type: ignore
 

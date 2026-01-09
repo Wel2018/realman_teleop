@@ -2,7 +2,7 @@ import json
 from aiohttp import ConnectionTimeoutError
 import requests
 from toolbox.comm.server_echo import ServerEcho
-from toolbox.core.color_print import printc
+from ..log import printc
 from toolbox.qt import qtbase
 from .. import APPCFG, API_IP, API_PRE
 

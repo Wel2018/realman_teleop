@@ -3,13 +3,14 @@
 # 官方文档：https://develop.realman-robotics.com/robot/apipython/classes/roboticArm/
 # pip install Robotic_Arm (当前使用版本：1.1.1)
 
+import threading
 import time
 from Robotic_Arm.rm_robot_interface import *  # type: ignore
 import numpy as np
 from rich import print
 from typing import List, Tuple, Dict, Any, Optional
 
-from toolbox.core.color_print import printc
+from ..log import printc
 from .dexhand import DexterousHand
 from toolbox.qt.common.debug import enable_debugpy
 from toolbox.qt import qtbase
@@ -103,6 +104,7 @@ def pose_by_rot_cached(
 # ----------------------------
 class RealmanArmClient(qtbase.QObject):
     sig_move_finger = qtbase.Signal(int, int) # index: int, position: int
+    sig_connect_finished = qtbase.Signal()
 
     def __init__(self, arm_model: rm_robot_arm_model_e = rm_robot_arm_model_e.RM_MODEL_RM_63_III_E):
         super().__init__()
@@ -110,8 +112,13 @@ class RealmanArmClient(qtbase.QObject):
         force_type = rm_force_type_e.RM_MODEL_RM_B_E  # 参考原代码
         self.algo = Algo(arm_model, force_type)  # type: ignore
         self.is_connected = 0
-
+    
     def connect(self, ip, port=8080):
+        """在子线程中连接机械臂，避免阻塞主进程"""
+        self.t_connect = threading.Thread(target=self._connect, args=(ip, port), daemon=True)
+        self.t_connect.start()
+
+    def _connect(self, ip, port=8080):
         self.ip = ip
         self.port = port
         self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
@@ -122,6 +129,7 @@ class RealmanArmClient(qtbase.QObject):
         if arm_id == -1:
             printc("机械臂连接失败！")
             printc(f"当前信息：ip={ip} port={port}")
+            self.sig_connect_finished.emit()
             return
 
         # 打印并设置 tool frame（保留原行为）
@@ -157,7 +165,8 @@ class RealmanArmClient(qtbase.QObject):
             self.hand_init()
         else:
             self.gripper_init()
-
+        self.sig_connect_finished.emit()
+        
     def hand_init(self):
         printc("正在初始化灵巧手...")
         self.hand = DexterousHand(self.robot)

@@ -6,12 +6,14 @@ import json
 import requests
 from rich import print
 from realman_teleop.bgtask.runner import Runner
+from realman_teleop.log import init_logger, printc
+from loguru import logger
 from toolbox.comm.server_echo import ServerEcho
-from toolbox.core.color_print import printc
+# from . import printc
 from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
-from . import q_appcfg, logger
+from . import q_appcfg
 from . import APPCFG, IS_HAND_MODE, API_IP, API_PORT
 from . import ARM_IP, API_PORT, API_PRE
 from .bgtask.spacemouse import SpaceMouseListener
@@ -119,11 +121,15 @@ class MainWindow(qtbase.QApp):
 
         # 机械臂实例
         self.arm = RealmanArmClient()
+        self.arm.sig_connect_finished.connect(self.connect_finished)
         self.runner = Runner(ui.spacemouse_trigger_mode, ui.spacemouse_usable)
         self.runner.sig_on.connect(self.runner_on)
         self.runner.sig_off.connect(self.runner_off)
         self.runner.sig_msg.connect(self.add_log)
         self.runner.start()
+
+        self.ui.btn_arm_connect.setEnabled(bool(1))
+        self.ui.btn_arm_disconnect.setEnabled(bool(0))
 
         # init ok
         self.add_log("初始化完成", color="green")
@@ -204,6 +210,31 @@ class MainWindow(qtbase.QApp):
     def _hand_sleep(self):
         time.sleep(0.3)
 
+    def connect_finished(self):
+        """尝试连接机械臂完成，可能没有连接成功"""
+        if self.arm.is_connected:
+            self.add_log("机械臂连接成功", color='green')
+            self.add_timer("timer_update_msg", 200, self.update_msg, 1)
+            stage = self.arm_get_collision()
+            self.ui.spin_collision_state.setValue(stage)
+            self.add_log(f"当前碰撞等级: {stage} [范围: 1-8]", color='green')
+            self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
+            self.add_log("程序初始化完成", color="green")
+            self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
+            self.ui.btn_arm_connect.setEnabled(bool(0))
+            self.ui.btn_arm_disconnect.setEnabled(bool(1))
+            
+            # 启动灵巧手状态实时获取线程
+            if IS_HAND_MODE:
+                self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
+                self.t.start()
+        else:
+            self.add_log("机械臂连接失败", color='red')
+            self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
+            self.ui.btn_arm_connect.setEnabled(bool(1))
+            self.ui.btn_arm_disconnect.setEnabled(bool(0))
+        
+
     def arm_connect(self):
         """机械臂连接"""
         if self.arm.is_connected:
@@ -222,23 +253,8 @@ class MainWindow(qtbase.QApp):
         self.add_log(f"ping={timeout} ms, ARM_IP={ARM_IP}，正在连接...")
         self.arm.connect(ip)
 
-        if self.arm.is_connected:
-            self.add_log("机械臂连接成功", color='green')
-            self.add_timer("timer_update_msg", 200, self.update_msg, 1)
-            stage = self.arm_get_collision()
-            self.ui.spin_collision_state.setValue(stage)
-            self.add_log(f"当前碰撞等级: {stage} [范围: 1-8]", color='green')
-            self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
-            self.add_log("程序初始化完成", color="green")
-            self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
-            
-            # 启动灵巧手状态实时获取线程
-            if IS_HAND_MODE:
-                self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
-                self.t.start()
-        else:
-            self.add_log("机械臂连接失败", color='red')
-            self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
+        self.ui.btn_arm_connect.setEnabled(bool(0))
+        self.ui.btn_arm_disconnect.setEnabled(bool(0))
 
 
     def arm_disconnect(self):
@@ -552,6 +568,8 @@ class MainWindow(qtbase.QApp):
 
     
 def main():
+    init_logger()
+    printc(f"q_appcfg={q_appcfg}")
     qapp = qtbase.QApplication(sys.argv)
     # 设置全局默认字体
     qapp.setFont(qtbase.QFont("微软雅黑", 11))
