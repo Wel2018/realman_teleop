@@ -7,8 +7,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>930</width>
-    <height>685</height>
+    <width>987</width>
+    <height>610</height>
    </rect>
   </property>
   <property name="font">
@@ -23,6 +23,95 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout">
     <item row="0" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <item>
+       <widget class="QPushButton" name="btn_setting">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>修改快捷键和初始化虚拟环境状态</string>
+        </property>
+        <property name="statusTip">
+         <string>修改快捷键和初始化虚拟环境状态</string>
+        </property>
+        <property name="text">
+         <string>设置</string>
+        </property>
+        <property name="checkable">
+         <bool>false</bool>
+        </property>
+        <property name="autoDefault">
+         <bool>false</bool>
+        </property>
+        <property name="flat">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_gozero">
+        <property name="text">
+         <string>回零位</string>
+        </property>
+        <property name="flat">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_stop">
+        <property name="text">
+         <string>急停</string>
+        </property>
+        <property name="flat">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_recover">
+        <property name="text">
+         <string>报错恢复</string>
+        </property>
+        <property name="flat">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_5">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_gripper">
+        <property name="text">
+         <string>夹爪</string>
+        </property>
+        <property name="flat">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="spacemouse_trigger_mode">
+        <property name="text">
+         <string>mode</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item row="2" column="0">
      <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,2">
       <item>
        <widget class="QLabel" name="msg">
@@ -30,7 +119,7 @@
          <enum>QFrame::Shape::StyledPanel</enum>
         </property>
         <property name="text">
-         <string/>
+         <string>-</string>
         </property>
        </widget>
       </item>
@@ -57,6 +146,9 @@
             <property name="text">
              <string>x 清空日志</string>
             </property>
+            <property name="flat">
+             <bool>true</bool>
+            </property>
            </widget>
           </item>
          </layout>
@@ -64,106 +156,100 @@
         <item>
          <layout class="QVBoxLayout" name="verticalLayout_2">
           <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_5">
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
             <item>
-             <widget class="QLabel" name="label_3">
+             <widget class="QLabel" name="label_arm">
               <property name="text">
-               <string>控制状态</string>
+               <string>机械臂 IP</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="ctl_state">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="font">
-               <font>
-                <family>Microsoft YaHei</family>
-                <pointsize>12</pointsize>
-                <bold>true</bold>
-               </font>
-              </property>
-              <property name="statusTip">
-               <string>勾选遥操作后在此显示控制命令</string>
-              </property>
-              <property name="text">
-               <string>暂无控制状态</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_6">
-            <item>
-             <widget class="QCheckBox" name="spacemouse_usable">
-              <property name="text">
-               <string>空间鼠标可用状态</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="spacemouse_trigger_mode">
+             <widget class="QLineEdit" name="arm_ip">
               <property name="text">
                <string/>
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QPushButton" name="btn_arm_connect">
+              <property name="text">
+               <string>连接</string>
+              </property>
+              <property name="flat">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btn_arm_disconnect">
+              <property name="text">
+               <string>断开</string>
+              </property>
+              <property name="flat">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_2">
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
             <item>
-             <widget class="QPushButton" name="btn_gripper">
+             <widget class="QLabel" name="label_spacemouse">
               <property name="text">
-               <string>夹爪</string>
+               <string>SpaceMouse 服务</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="btn_setting">
-              <property name="enabled">
-               <bool>true</bool>
-              </property>
-              <property name="toolTip">
-               <string>修改快捷键和初始化虚拟环境状态</string>
-              </property>
-              <property name="statusTip">
-               <string>修改快捷键和初始化虚拟环境状态</string>
-              </property>
+             <widget class="QPushButton" name="btn_spacemouse_start">
               <property name="text">
-               <string>设置</string>
-              </property>
-              <property name="checkable">
-               <bool>false</bool>
-              </property>
-              <property name="autoDefault">
-               <bool>false</bool>
+               <string>启动</string>
               </property>
               <property name="flat">
-               <bool>false</bool>
+               <bool>true</bool>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="btn_gozero">
+             <widget class="QPushButton" name="btn_spacemouse_stop">
               <property name="text">
-               <string>回零位</string>
+               <string>关闭</string>
+              </property>
+              <property name="flat">
+               <bool>true</bool>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="btn_stop">
-              <property name="text">
-               <string>急停</string>
+             <spacer name="horizontalSpacer_2">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
               </property>
-             </widget>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
             </item>
            </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_9">
+            <property name="font">
+             <font>
+              <family>Microsoft YaHei</family>
+              <pointsize>12</pointsize>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="text">
+             <string>末端移动速度</string>
+            </property>
+           </widget>
           </item>
           <item>
            <layout class="QHBoxLayout" name="horizontalLayout_8">
@@ -337,139 +423,6 @@
            <layout class="QHBoxLayout" name="horizontalLayout_15">
             <item>
              <layout class="QHBoxLayout" name="horizontalLayout_16"/>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout">
-            <item>
-             <widget class="QLabel" name="label">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>碰撞等级</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSpinBox" name="spin_collision_state">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimum">
-               <number>0</number>
-              </property>
-              <property name="maximum">
-               <number>8</number>
-              </property>
-              <property name="value">
-               <number>0</number>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btn_set_collision">
-              <property name="text">
-               <string>应用</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_recover">
-              <property name="text">
-               <string>报错恢复</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer">
-              <property name="orientation">
-               <enum>Qt::Orientation::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_4">
-            <item>
-             <widget class="QLabel" name="label_arm">
-              <property name="text">
-               <string>机械臂 IP</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="arm_ip">
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_arm_connect">
-              <property name="text">
-               <string>连接</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_arm_disconnect">
-              <property name="text">
-               <string>断开</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_3">
-            <item>
-             <widget class="QLabel" name="label_spacemouse">
-              <property name="text">
-               <string>SpaceMouse 服务</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_spacemouse_start">
-              <property name="text">
-               <string>启动</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_spacemouse_stop">
-              <property name="text">
-               <string>关闭</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer_2">
-              <property name="orientation">
-               <enum>Qt::Orientation::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
             </item>
            </layout>
           </item>
@@ -703,7 +656,23 @@
                 <property name="text">
                  <string>应用</string>
                 </property>
+                <property name="flat">
+                 <bool>true</bool>
+                </property>
                </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_3">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
               </item>
              </layout>
             </item>
@@ -715,11 +684,11 @@
                  <font>
                   <family>Microsoft YaHei</family>
                   <pointsize>11</pointsize>
-                  <bold>true</bold>
+                  <bold>false</bold>
                  </font>
                 </property>
                 <property name="text">
-                 <string>动作</string>
+                 <string>灵巧手动作</string>
                 </property>
                 <property name="alignment">
                  <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -731,12 +700,18 @@
                 <property name="text">
                  <string>抓握</string>
                 </property>
+                <property name="flat">
+                 <bool>true</bool>
+                </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="btn_4finge_release">
                 <property name="text">
                  <string>取消抓握</string>
+                </property>
+                <property name="flat">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>
@@ -745,12 +720,18 @@
                 <property name="text">
                  <string>捏住</string>
                 </property>
+                <property name="flat">
+                 <bool>true</bool>
+                </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="btn_2finge_release">
                 <property name="text">
                  <string>取消捏住</string>
+                </property>
+                <property name="flat">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>
@@ -774,6 +755,92 @@
          </layout>
         </item>
        </layout>
+      </item>
+     </layout>
+    </item>
+    <item row="1" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QLineEdit" name="ctl_state">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="font">
+         <font>
+          <family>Microsoft YaHei</family>
+          <pointsize>12</pointsize>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="statusTip">
+         <string>勾选遥操作后在此显示控制命令</string>
+        </property>
+        <property name="text">
+         <string>暂无控制状态</string>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>机械臂碰撞等级</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spin_collision_state">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimum">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <number>8</number>
+        </property>
+        <property name="value">
+         <number>0</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="btn_set_collision">
+        <property name="text">
+         <string>应用</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="spacemouse_usable">
+        <property name="text">
+         <string>SpaceMouse 可用状态</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </item>

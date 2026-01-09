@@ -15,7 +15,7 @@ from . import q_appcfg, logger
 from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 from .bgtask.realman_arm import RealmanArmTask
-from .util import set_layout_visible
+from .util import set_layout_visible, set_layout_enabled
 
 APPCFG = q_appcfg.APPCFG_DICT
 if APPCFG['HOTRELOAD']:
@@ -57,6 +57,9 @@ class MainWindow(qtbase.QApp):
     
     def post_init(self):
         ui = self.ui
+
+        self.set_theme("blue")
+
         # 绑定点击事件
         self.bind_clicked(ui.btn_clear, self.clean_log)
         self.bind_clicked(ui.btn_stop, self.arm_stop)
@@ -88,7 +91,7 @@ class MainWindow(qtbase.QApp):
             qtbase.set_enable(ui.btn_4finge_release, 0)
             
             # 隐藏灵巧手相关的组件
-            set_layout_visible(ui.hand_layout, bool(0))
+            set_layout_enabled(ui.hand_layout, bool(0))
 
         # 遥操作控制步长改变
         # 默认速度
