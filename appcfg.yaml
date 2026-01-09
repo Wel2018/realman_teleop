@@ -4,19 +4,7 @@
 # date: 2026-01-09
 ##################################
 
-# 热重载
-HOTRELOAD: 0
-
-# 详细日志
-VERBOSE: 1
-
-# debugpy 线程调试模式
-THREAD_DEBUG: 0
-
-# 性能测试
-BENCHMARK: 0
-
-# 服务地址
+# API 服务地址
 API_IP: 127.0.0.1
 API_PORT: 8878
 
@@ -24,14 +12,19 @@ API_PORT: 8878
 ARM_IP: 192.168.10.18
 ARM_PORT: 8080
 
-# spacemouse 监听器（开发模式/生产模式）
-spacemouse_trigger_dev: 1
+# spacemouse 监听器工作模式
+# dev: 开发模式，鼠标控制状态不走 API 服务
+# prod: 生产模式，鼠标控制状态由 API 服务控制
+spacemouse_mode: dev
 
 # spacemouse 可用状态获取时间间隔（ms）
 spacemouse_usage_intv: 1000
 
-# 0:夹爪, 1:灵巧手模式
-is_hand_mode: 0
+# 末端类型
+# gripper: 夹爪
+# hand: 灵巧手
+# ee_type: gripper
+ee_type: hand
 
 # 机械臂零位
 # arm_zero_joint: [116, 45, -120, 110, 25, -87]
@@ -59,3 +52,15 @@ x_dir_e: -0.16  # 在小桌板上面下移
 z_dir_e: -0.15  # 松开夹爪收，后撤
 go_zero_pose_via: [-0.357, 0.015, 0.516, -0.386, -0.778, -0.955]
 go_zero_pose_to: [-0.3, 0, 0.6, 3.142, -1.047, 3.142]
+
+# 热重载
+HOTRELOAD: 0
+
+# 详细日志
+VERBOSE: 1
+
+# debugpy 线程调试模式
+THREAD_DEBUG: 0
+
+# 性能测试
+BENCHMARK: 0

@@ -12,27 +12,12 @@ from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg, logger
+from . import APPCFG, IS_HAND_MODE, API_IP, API_PORT
+from . import ARM_IP, API_PORT, API_PRE
 from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 from .bgtask.realman_arm import RealmanArmTask
 from .util import set_layout_visible, set_layout_enabled
-
-APPCFG = q_appcfg.APPCFG_DICT
-if APPCFG['HOTRELOAD']:
-    import jurigged
-    jurigged.watch("./")
-
-API_IP = APPCFG['API_IP']
-API_PORT = APPCFG['API_PORT']
-ARM_IP = APPCFG['ARM_IP']
-API_PRE = f"http://{API_IP}:{API_PORT}"
-spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
-spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
-vel_linear_keyboard = APPCFG['vel_linear_keyboard']
-vel_angular_keyboard = APPCFG['vel_angular_keyboard']
-vel_linear_spaceouse = APPCFG['vel_linear_spaceouse']
-vel_angular_spaceouse = APPCFG['vel_angular_spaceouse']
-
 
 echo = ServerEcho()
 
@@ -73,7 +58,7 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_setting, self.setting)
 
         # 灵巧手模式
-        if APPCFG['is_hand_mode']:
+        if IS_HAND_MODE:
             self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
             self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
             self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
@@ -95,10 +80,10 @@ class MainWindow(qtbase.QApp):
 
         # 遥操作控制步长改变
         # 默认速度
-        self.ui.step_posi.setValue(vel_linear_keyboard)  # 键盘速度控制，线速度
-        self.ui.step_angle.setValue(vel_angular_keyboard)  # 键盘速度控制，角速度
-        self.ui.step_posi2.setValue(vel_linear_spaceouse)  # 鼠标速度控制，线速度
-        self.ui.step_angle2.setValue(vel_angular_spaceouse)  # 鼠标速度控制，角速度
+        self.ui.step_posi.setValue(APPCFG['vel_linear_keyboard'])  # 键盘速度控制，线速度
+        self.ui.step_angle.setValue(APPCFG['vel_angular_keyboard'])  # 键盘速度控制，角速度
+        self.ui.step_posi2.setValue(APPCFG['vel_linear_spaceouse'])  # 鼠标速度控制，线速度
+        self.ui.step_angle2.setValue(APPCFG['vel_angular_spaceouse'])  # 鼠标速度控制，角速度
 
         # 线速度、角速度
         self.pos_vel = ui.step_posi.value()
@@ -189,8 +174,7 @@ class MainWindow(qtbase.QApp):
             self.arm.hand_close()
 
     def set_gripper_or_hand(self):
-        is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
-        if is_hand_mode:
+        if IS_HAND_MODE:
             self.set_hand()
         else:
             self.set_gripper()
@@ -249,7 +233,7 @@ class MainWindow(qtbase.QApp):
             self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
             
             # 启动灵巧手状态实时获取线程
-            if APPCFG['is_hand_mode']:
+            if IS_HAND_MODE:
                 self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
                 self.t.start()
         else:

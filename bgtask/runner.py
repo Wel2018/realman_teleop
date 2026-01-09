@@ -4,20 +4,7 @@ import requests
 from toolbox.comm.server_echo import ServerEcho
 from toolbox.core.color_print import printc
 from toolbox.qt import qtbase
-from .. import q_appcfg
-
-APPCFG = q_appcfg.APPCFG_DICT
-
-API_IP = APPCFG['API_IP']
-API_PORT = APPCFG['API_PORT']
-ARM_IP = APPCFG['ARM_IP']
-API_PRE = f"http://{API_IP}:{API_PORT}"
-spacemouse_trigger_dev = APPCFG['spacemouse_trigger_dev']
-spacemouse_usage_intv = APPCFG['spacemouse_usage_intv']
-vel_linear_keyboard = APPCFG['vel_linear_keyboard']
-vel_angular_keyboard = APPCFG['vel_angular_keyboard']
-vel_linear_spaceouse = APPCFG['vel_linear_spaceouse']
-vel_angular_spaceouse = APPCFG['vel_angular_spaceouse']
+from .. import APPCFG, API_IP, API_PRE
 
 
 class Runner(qtbase.QAsyncTask):
@@ -36,7 +23,9 @@ class Runner(qtbase.QAsyncTask):
         # 生产模式：通过 api 共享状态触发，和网页端搭配实现
         # mode = self.ui.spacemouse_trigger_mode        
         self.echo = ServerEcho()
-        self.is_dev = 1
+
+        spacemouse_mode = APPCFG['spacemouse_mode']
+        self.is_dev = 1 if spacemouse_mode == "dev" else 0
 
         MODE_DEV_TXT = "[开发模式]"
         MODE_PROD_TXT = "[生产模式]"
@@ -44,11 +33,7 @@ class Runner(qtbase.QAsyncTask):
         MODE_PROD_COLOR = "blue"
 
         # 开发模式
-        if spacemouse_trigger_dev:
-            # self.add_timer(
-            #      "spacemouse_trigger_dev", 
-            #      spacemouse_usage_intv, 
-            #      self.spacemouse_trigger_dev, 1)
+        if spacemouse_mode == "dev":
             self.is_dev = 1
             self.ui_spacemouse_trigger_mode.setText(MODE_DEV_TXT)
             self.ui_spacemouse_trigger_mode.setStyleSheet(f"color: {MODE_DEV_COLOR};")
@@ -57,26 +42,19 @@ class Runner(qtbase.QAsyncTask):
         else:
             timeout = self.echo.ping(API_IP)
             if timeout < 1e3:
-                # self.add_timer(
-                #      "spacemouse_trigger_prod", 
-                #      spacemouse_usage_intv, 
-                #      self.spacemouse_trigger_prod, 1)
-                # self.add_log(f"spacemouse_trigger: prod, timeout={timeout} ms", color="green")
                 self.ui_spacemouse_trigger_mode.setText(MODE_PROD_TXT)
                 self.ui_spacemouse_trigger_mode.setStyleSheet(f"color: {MODE_PROD_COLOR};")
                 self.is_dev = 0
 
             else:  # 超时
-                # self.add_log("API Server 无法连接，启用开发模式", color="red")
-                # self.add_timer(
-                #      "spacemouse_trigger_dev", 
-                #      spacemouse_usage_intv, 
-                #      self.spacemouse_trigger_dev, 1)
-                # self.add_log("spacemouse_trigger: dev", color="green")
                 self.ui_spacemouse_trigger_mode.setText(MODE_DEV_TXT)
                 self.ui_spacemouse_trigger_mode.setStyleSheet(f"color: {MODE_DEV_COLOR};")
                 self.is_dev = 1
 
+        # 在生产模式下不允许切换 ui_spacemouse_usable
+        if not self.is_dev:
+            self.ui_spacemouse_usable.setEnabled(False)
+            printc("生产模式下不允许切换 ui_spacemouse_usable")
 
     def _spacemouse_update_param(self, k="spacemouse_status", v={}):
         # 上传参数
@@ -151,14 +129,14 @@ class Runner(qtbase.QAsyncTask):
     def run(self):
         self.is_run = 1
         if self.is_dev:
-            func = self.spacemouse_trigger_dev
+            _spacemouse_trigger = self.spacemouse_trigger_dev
         else:
-            func = self.spacemouse_trigger_prod
-        printc(f"spacemouse_trigger={func}")
+            _spacemouse_trigger = self.spacemouse_trigger_prod
+        printc(f"spacemouse_trigger={_spacemouse_trigger}")
 
         while self.is_run:
             try:
-                func()
+                _spacemouse_trigger()
             except Exception as e:
                 printc(f"spacemouse_trigger err={e}")
-            self.msleep(spacemouse_usage_intv)
+            self.msleep(APPCFG['spacemouse_usage_intv'])

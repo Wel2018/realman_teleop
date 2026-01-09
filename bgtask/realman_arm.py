@@ -13,13 +13,7 @@ from toolbox.core.color_print import printc
 from .dexhand import DexterousHand
 from toolbox.qt.common.debug import enable_debugpy
 from toolbox.qt import qtbase
-from .. import q_appcfg
-
-APPCFG = q_appcfg.APPCFG_DICT
-arm_speed = APPCFG['arm_speed']
-arm_zero_joint = APPCFG['arm_zero_joint']
-arm_gripper_force = APPCFG['arm_gripper_force']
-arm_gripper_speed = APPCFG['arm_gripper_speed']
+from .. import APPCFG, IS_HAND_MODE
 
 
 # ----------------------------
@@ -158,9 +152,8 @@ class RealmanArmClient(qtbase.QObject):
         # self.gozero()
         self.is_connected = 1
         self.is_hand_opened = 1   # 夹爪/灵巧手打开状态
-        self.is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
 
-        if self.is_hand_mode:
+        if IS_HAND_MODE:
             self.hand_init()
         else:
             self.gripper_init()
@@ -178,7 +171,7 @@ class RealmanArmClient(qtbase.QObject):
     def gozero(self):
         # 使用较短的参数调用，保留原意
         try:
-            self.robot.rm_movej(arm_zero_joint, arm_speed, 0, 0, 1)
+            self.robot.rm_movej(APPCFG['arm_zero_joint'], APPCFG['arm_speed'], 0, 0, 1)
         except Exception as e:
             printc(f"[error] gozero failed: {e}")
 
@@ -202,7 +195,7 @@ class RealmanArmClient(qtbase.QObject):
 
     def gripper_open(self):
         try:
-            ret = self.robot.rm_set_gripper_release(arm_gripper_speed, True, 10)
+            ret = self.robot.rm_set_gripper_release(APPCFG['arm_gripper_speed'], True, 10)
             printc(f"gripper_open: {ret}")
             self.is_hand_opened = 1
             return ret
@@ -211,7 +204,7 @@ class RealmanArmClient(qtbase.QObject):
 
     def gripper_close(self):
         try:
-            ret = self.robot.rm_set_gripper_pick(arm_gripper_speed, arm_gripper_force, True, 10)
+            ret = self.robot.rm_set_gripper_pick(APPCFG['arm_gripper_speed'], APPCFG['arm_gripper_force'], True, 10)
             printc(f"gripper_close: {ret}")
             self.is_hand_opened = 0
             return ret
@@ -325,8 +318,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
             self.arm.hand_close()
 
     def set_gripper_or_hand(self):
-        is_hand_mode = APPCFG['is_hand_mode']  # 0:夹爪, 1:灵巧手模式
-        if is_hand_mode:
+        if IS_HAND_MODE:
             self.set_hand()
         else:
             self.set_gripper()
@@ -334,7 +326,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
     def single_click_front(self):
         """自定义功能函数，单击左键时执行"""
-        if APPCFG['is_hand_mode']:
+        if IS_HAND_MODE:
             printc("执行自定义功能 single_click_front: 设置灵巧手抓握")
             if self.is_opened:
                 self._4finge_pick()
@@ -383,7 +375,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
 
     def double_click_front(self):
         """自定义功能函数，双击左键时执行"""
-        if APPCFG['is_hand_mode']:
+        if IS_HAND_MODE:
             printc(f"执行自定义功能 double_click_front: 设置灵巧手捏住")
             if self.is_opened:
                 self._2finge_pick()
