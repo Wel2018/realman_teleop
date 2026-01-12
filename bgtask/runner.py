@@ -2,7 +2,7 @@ import json
 from aiohttp import ConnectionTimeoutError
 import requests
 from toolbox.comm.server_echo import ServerEcho
-from ..log import printc
+from toolbox.core.log import printc
 from toolbox.qt import qtbase
 from .. import APPCFG, API_IP, API_PRE
 
@@ -138,5 +138,5 @@ class Runner(qtbase.QAsyncTask):
             try:
                 _spacemouse_trigger()
             except Exception as e:
-                printc(f"spacemouse_trigger err={e}")
+                printc(f"spacemouse_trigger err={e}", err=1)
             self.msleep(APPCFG['spacemouse_usage_intv'])

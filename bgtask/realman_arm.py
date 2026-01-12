@@ -10,7 +10,7 @@ import numpy as np
 from rich import print
 from typing import List, Tuple, Dict, Any, Optional
 
-from ..log import printc
+from toolbox.core.log import printc
 from .dexhand import DexterousHand
 from toolbox.qt.common.debug import enable_debugpy
 from toolbox.qt import qtbase
@@ -119,7 +119,7 @@ class RealmanArmClient(qtbase.QObject):
         self.t_connect.start()
 
     def _connect(self, ip, port=8080):
-        from ..log import printc
+        from toolbox.core.log import printc
         self.ip = ip
         self.port = port
         self.robot = RoboticArm(rm_thread_mode_e.RM_TRIPLE_MODE_E)  # type: ignore
@@ -128,8 +128,7 @@ class RealmanArmClient(qtbase.QObject):
         printc(f"RobotArm ID: {arm_id}")
 
         if arm_id == -1:
-            printc("机械臂连接失败！")
-            printc(f"当前信息：ip={ip} port={port}")
+            printc(f"机械臂连接失败！当前信息：ip={ip} port={port}", err=1)
             self.sig_connect_finished.emit()
             return
 
@@ -183,7 +182,7 @@ class RealmanArmClient(qtbase.QObject):
         try:
             self.robot.rm_movej(APPCFG['arm_zero_joint'], APPCFG['arm_speed'], 0, 0, 1)
         except Exception as e:
-            printc(f"[error] gozero failed: {e}")
+            printc(f"[error] gozero failed: {e}", err=1)
 
     def move_p_canfd(self, pose: List[float]):
         # 包装 movep 调用并打印（原来函数名保留）
@@ -192,7 +191,7 @@ class RealmanArmClient(qtbase.QObject):
             printc(f"MOVE_P: {pose}, ret={ret}")
             return ret
         except Exception as e:
-            printc(f"[error] move_p_canfd failed: {e}")
+            printc(f"[error] move_p_canfd failed: {e}", err=1)
             return None
 
     def hand_open(self):
@@ -210,7 +209,7 @@ class RealmanArmClient(qtbase.QObject):
             self.is_hand_opened = 1
             return ret
         except Exception as e:
-            printc(f"[warn] gripper_open failed: {e}")
+            printc(f"[warn] gripper_open failed: {e}", err=1)
 
     def gripper_close(self):
         try:
@@ -219,7 +218,7 @@ class RealmanArmClient(qtbase.QObject):
             self.is_hand_opened = 0
             return ret
         except Exception as e:
-            printc(f"[warn] gripper_close failed: {e}")
+            printc(f"[warn] gripper_close failed: {e}", err=1)
 
     def get_pose(self) -> Tuple[int, Dict[str, Any]]:
         """返回 rm_get_current_arm_state 的原始结果 (ret, data)"""
@@ -242,7 +241,6 @@ class RealmanArmClient(qtbase.QObject):
 # ----------------------------
 # RealmanArmTask：QAsyncTask 子类（保留结构）
 # ----------------------------
-from toolbox.core.color_print import printc
 from toolbox.qt import qtbase
 from .spacemouse import SpaceMouseListener
 
@@ -482,9 +480,9 @@ class RealmanArmTask(qtbase.QAsyncTask):
                 ]
                 try:
                     ret = self.arm.robot.rm_movep_canfd(new_pose, False, 1, 60)
-                    printc("[movep xyz] ret=", ret, f"new_pose={new_pose}")
+                    printc(f"[movep xyz] ret={ret} new_pose={new_pose}")
                 except Exception as e:
-                    printc(f"[error] movep_xyz exception: {e}")
+                    printc(f"[error] movep_xyz exception: {e}", err=1)
                 continue
 
             # 处理姿态旋转（耦合）
@@ -516,7 +514,7 @@ class RealmanArmTask(qtbase.QAsyncTask):
                     ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
                     printc(f"[movep rpy] ret={ret} axis={rot_axis} theta={theta}")
                 except Exception as e:
-                    printc(f"[error] movep_rpy exception: {e}")
+                    printc(f"[error] movep_rpy exception: {e}", err=1)
                 continue
 
     def stop(self):

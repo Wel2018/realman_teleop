@@ -6,7 +6,7 @@ import json
 import requests
 from rich import print
 from realman_teleop.bgtask.runner import Runner
-from realman_teleop.log import init_logger, printc
+from toolbox.core.log import init_logger, printc
 from loguru import logger
 from toolbox.comm.server_echo import ServerEcho
 from toolbox.core.file_op import open_local_file
@@ -19,8 +19,34 @@ from .bgtask.spacemouse import SpaceMouseListener
 from .bgtask.realman_arm import RealmanArmClient
 from .bgtask.realman_arm import RealmanArmTask
 from .util import set_layout_visible, set_layout_enabled
+import functools
 
 echo = ServerEcho()
+
+
+def require_arm_connected(func):
+    """
+    函数装饰器：要求机械臂已连接才能执行被装饰的函数
+    如果 `check_arm` 校验失败，会捕获异常并打印日志，不执行原函数
+    """
+    @functools.wraps(func)  # 保留原函数的元信息（如函数名、文档字符串）
+    def wrapper(self, *args, **kwargs):
+        try:
+            # 执行机械臂连接状态校验
+            self.check_arm()
+            # 校验通过，执行原函数
+            return func(self, *args, **kwargs)
+        except AssertionError as e:
+            # 捕获校验失败的异常，打印并记录日志
+            error_msg = f"执行 {func.__name__} 失败：{str(e)}"
+            print(error_msg)  # 控制台打印
+            logger.exception(error_msg)  # 日志文件记录
+        except Exception as e:
+            # 捕获其他意外异常，避免程序崩溃
+            error_msg = f"执行 {func.__name__} 时发生未知错误：{str(e)}"
+            print(error_msg)
+            logger.exception(error_msg, exc_info=True)
+    return wrapper
 
 
 class MainWindow(qtbase.QApp):
@@ -164,15 +190,15 @@ class MainWindow(qtbase.QApp):
             self.ui.pos_f4.setValue(curr[4])
             time.sleep(1)
 
+    @require_arm_connected
     def set_gripper(self):
-        self.check_arm()
         if not self.arm.is_hand_opened:
             self.arm.gripper_open()
         else:
             self.arm.gripper_close()
 
+    @require_arm_connected
     def set_hand(self):
-        self.check_arm()
         if not self.arm.is_hand_opened:
             self.arm.hand_open()
         else:
@@ -326,8 +352,9 @@ class MainWindow(qtbase.QApp):
         ret = self.arm.robot.rm_set_arm_stop()
         self.add_log("机械臂急停", color="red")
 
+    @require_arm_connected
     def spacemouse_start(self):
-        self.check_arm()
+        # self.check_arm()
         if self.task_manager.is_task_running(self.TH_CTL_MODE):
             self.add_log("SpaceMouse 服务已经启动")
             return
@@ -382,11 +409,13 @@ class MainWindow(qtbase.QApp):
         self.pre_init()
         self.init(ui_logger=ui.txt_log, logger=logger)
         self.post_init()
-
+    
     def check_arm(self):
+        msg = "请先连接机械臂"
         if not self.arm.is_connected:
-            self.add_log("请先连接机械臂", color='red') 
-        assert self.arm.is_connected == 1, "请先连接机械臂"
+            self.add_log(msg, color='red') 
+            printc(msg, err=1)
+        assert self.arm.is_connected == 1, msg
 
     def gozero(self):
         """回到初始位置"""
@@ -567,7 +596,7 @@ class MainWindow(qtbase.QApp):
 
     
 def main():
-    init_logger()
+    init_logger(q_appcfg.slot)
     printc(f"q_appcfg={q_appcfg}")
     qapp = qtbase.QApplication(sys.argv)
     # 设置全局默认字体
