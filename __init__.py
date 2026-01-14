@@ -1,17 +1,19 @@
 """睿尔曼遥操作客户端"""
 
 from toolbox.qt import qtbase
+from .version import __version__
+from .version import __update_timestamp__
+
 
 q_appcfg = qtbase.QAppConfig(
     name = "Realman 遥操作数据采集程序",
     name_en = "Realman Teleop",
-    date="2026-01-12",
-    version = "0.1.5",
+    date = __update_timestamp__,
+    version = __version__,
     fontsize = 14,
     slot="realman_teleop",
     APPCFG_DICT=qtbase.get_appcfg(__file__),
 )
-# logger = get_logger(q_appcfg.slot)
 
 APPCFG = q_appcfg.APPCFG_DICT
 ee_type = APPCFG['ee_type']
