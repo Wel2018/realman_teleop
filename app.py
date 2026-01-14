@@ -6,7 +6,7 @@ import json
 import requests
 from rich import print
 from realman_teleop.bgtask.runner import Runner
-from toolbox.core.log import init_logger, printc
+from toolbox.core.log import LogHelper, printc
 from loguru import logger
 from toolbox.comm.server_echo import ServerEcho
 from toolbox.core.file_op import open_local_file
@@ -414,7 +414,7 @@ class MainWindow(qtbase.QApp):
         msg = "请先连接机械臂"
         if not self.arm.is_connected:
             self.add_log(msg, color='red') 
-            printc(msg, err=1)
+            printc(msg, 'err')
         assert self.arm.is_connected == 1, msg
 
     def gozero(self):
@@ -596,7 +596,7 @@ class MainWindow(qtbase.QApp):
 
     
 def main():
-    init_logger(q_appcfg.slot)
+    LogHelper.init(q_appcfg.slot)
     printc(f"q_appcfg={q_appcfg}")
     qapp = qtbase.QApplication(sys.argv)
     # 设置全局默认字体

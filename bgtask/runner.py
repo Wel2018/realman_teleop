@@ -138,5 +138,5 @@ class Runner(qtbase.QAsyncTask):
             try:
                 _spacemouse_trigger()
             except Exception as e:
-                printc(f"spacemouse_trigger err={e}", err=1)
+                printc(f"spacemouse_trigger err={e}", 'err')
             self.msleep(APPCFG['spacemouse_usage_intv'])
