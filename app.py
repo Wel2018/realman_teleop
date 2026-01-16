@@ -251,8 +251,8 @@ class MainWindow(qtbase.QApp):
             
             # 启动灵巧手状态实时获取线程
             if IS_HAND_MODE:
-                self.t = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
-                self.t.start()
+                self.th_get_arm_hand_curr = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
+                self.th_get_arm_hand_curr.start()
         else:
             self.add_log("机械臂连接失败", color='red')
             self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
@@ -297,9 +297,11 @@ class MainWindow(qtbase.QApp):
         self.arm.disconnect()
         self.add_log("机械臂已断开", color='green')
         self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
-        if self.t.is_alive():
-            #  self.t.terminate()
-            self.is_t_run = 0
+
+        if IS_HAND_MODE:
+            if self.th_get_arm_hand_curr.is_alive():
+                #  self.t.terminate()
+                self.is_t_run = 0
     
     def update_msg(self):
         """更新机械臂状态信息"""
@@ -352,9 +354,14 @@ class MainWindow(qtbase.QApp):
         ret = self.arm.robot.rm_set_arm_stop()
         self.add_log("机械臂急停", color="red")
 
-    @require_arm_connected
+    #@require_arm_connected
     def spacemouse_start(self):
-        # self.check_arm()
+        printc("启动 spacemouse 服务...")
+        printc("等待机械臂启动完成...")
+        self.arm.t_connect.join()
+        time.sleep(2)
+        self.check_arm()
+        printc("机械臂启动完成！")
         if self.task_manager.is_task_running(self.TH_CTL_MODE):
             self.add_log("SpaceMouse 服务已经启动")
             return
