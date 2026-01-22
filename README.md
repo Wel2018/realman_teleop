@@ -10,10 +10,15 @@
 - [x] 支持末端移动速度控制
 - [x] 支持通过手动或通过网页端开启/关闭服务
 - [x] 适配灵巧手/夹爪两种抓取方式
+- [x] 支持通过 WebSocket 实时控制远程机器人手臂和夹爪/灵巧手的末端移动
 
 ## 主界面
 
 ![ui](doc/UI-2026-01-09.png)
+
+## SpaceMouse Controller
+
+![ui](doc/spacemouse_controller.png)
 
 ## 环境配置
 
