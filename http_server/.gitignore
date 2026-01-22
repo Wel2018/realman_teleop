@@ -1,0 +1,101 @@
+# 排除目录
+/toolbox
+/.out
+/output
+/.dev
+/.cache
+/bin
+# /.vscode
+**/tmp/
+**/tmp_build/
+**/temp/
+/dist
+/dist_pyd
+/dist_pyarmor
+/build/
+.idea/
+.VSCodeCounter/
+runs/
+yolo*.pt
+
+# 用户配置文件
+*_custom.toml
+
+# 第三方
+jetson_demo/
+third_party/
+weights/
+
+# 临时文件
+test.py
+*tmp.*
+*tmp_*
+*temp.*
+*.log
+*.log.txt
+*.o
+*.out
+*.lock
+*.bkp
+*.ffs_db
+*.bak
+cov.xml
+
+# Qt uic
+# ui_*.py
+
+# 代码分析文件
+*.udb
+*.und
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+# *.so
+*.dylib
+# *.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# python
+*.pyc
+__pycache__
+
+# 覆盖测试
+.coverage
+cov.info
+
+.vscode/bookmarks.json
+**/.old/**
+data/cam_calib/**
+third_library/**
+**/third_party/**
+echarts.min.js
+test.ipynb
+
+# qt
+ui_*.py

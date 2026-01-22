@@ -1,0 +1,82 @@
+##################################
+# realman_teleop app config
+# author: wel2018
+# date: 2026-01-09
+##################################
+
+# API 服务地址
+API_IP: 127.0.0.1
+API_PORT: 8878
+
+# 机械臂 IP
+ARM_IP: 192.168.10.20
+ARM_PORT: 8080
+
+# spacemouse 监听器工作模式
+# dev: 开发模式，鼠标控制状态不走 API 服务
+# prod: 生产模式，鼠标控制状态由 API 服务控制
+spacemouse_mode: dev
+
+# spacemouse 可用状态获取时间间隔（ms）
+spacemouse_usage_intv: 1000
+
+# 末端类型
+# gripper: 夹爪
+# hand: 灵巧手
+# ee_type: gripper
+ee_type: hand
+
+# 机械臂零位
+# arm_zero_joint: [116, 45, -120, 110, 25, -87]
+arm_zero_joint: [
+  -13.62399959564209,
+  86.5989990234375,
+  -6.47599983215332,
+  68.41999816894531,
+  -2.8929998874664307,
+  -350.5570068359375
+]
+
+arm_init_joint: [
+  -49.5,
+  76.1,
+  56.2,
+  -142.2,
+  -21.1,
+  -128,
+]
+
+# 机械臂移动速度
+arm_speed: 50
+
+# 机械臂夹爪的夹持力度
+# speed : int 手爪夹取速度，范围 1~1000，无单位量纲
+# force : int 力控阈值，范围：50~1000，无单位量纲
+arm_gripper_force: 1000
+arm_gripper_speed: 1000
+
+# 速度初始值
+vel_linear_keyboard: 0.01  # 键盘速度控制，线速度
+vel_angular_keyboard: 0.1  # 键盘速度控制，角速度
+vel_linear_spaceouse: 0.2  # 鼠标速度控制，线速度
+vel_angular_spaceouse: 0.3  # 鼠标速度控制，角速度
+
+
+# 双击自定义功能 double_click_back
+approach_pose: [-0.36, 0.197, 0.528, -2.608, -1.531, 0.9]
+x_dir_e: -0.16  # 在小桌板上面下移
+z_dir_e: -0.15  # 松开夹爪收，后撤
+go_zero_pose_via: [-0.357, 0.015, 0.516, -0.386, -0.778, -0.955]
+go_zero_pose_to: [-0.3, 0, 0.6, 3.142, -1.047, 3.142]
+
+# 热重载
+HOTRELOAD: 0
+
+# 详细日志
+VERBOSE: 1
+
+# debugpy 线程调试模式
+THREAD_DEBUG: 0
+
+# 性能测试
+BENCHMARK: 0
