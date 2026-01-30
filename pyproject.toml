@@ -5,7 +5,7 @@ authors = [{name = "wel2018", email = "kwei2021@foxmail.com"}]
 description = "-"
 dependencies = [
     "aiohttp>=3.13.3",
-    "pyspacemouse>=2.0.0",
+    "pyspacemouse==1.1.5",
     "requests>=2.32.5",
     "robotic-arm>=1.1.4",
     "robotic-toolbox",
