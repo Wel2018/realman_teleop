@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import time
 from toolbox.core.log import printc
 from toolbox.qt import qtbase
-from realman_teleop import IS_HAND_MODE, APPCFG
+from realman_teleop import APPCFG
 from realman_teleop.core.shared import Shared
 from Robotic_Arm.rm_robot_interface import *  # noqa: F403
 

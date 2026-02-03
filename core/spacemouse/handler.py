@@ -131,7 +131,7 @@ class SpaceMouseHandler:
             self.is_ok = 1
         else:
             self.is_ok = 0
-            printc(f"遥操作外设 {devtype} 未连接")
+            printc(f"遥操作外设 {devtype} 未连接", "critical")
         
         # self.is_run = 0
         self.speed_ratio = speed_ratio

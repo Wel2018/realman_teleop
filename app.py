@@ -12,8 +12,7 @@ from toolbox.core.file_op import open_local_file
 from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg
-from . import APPCFG, IS_HAND_MODE, API_IP, API_PORT
-from . import ARM_IP, API_PRE
+from . import APPCFG, API_IP, API_PORT, API_PRE
 from .core.shared import Shared
 from .util import set_layout_visible, set_layout_enabled
 
@@ -81,26 +80,6 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_arm_disconnect, self.arm_disconnect)
         self.bind_clicked(ui.btn_setting, self.setting)
 
-        # 灵巧手模式
-        # if IS_HAND_MODE:
-        #     self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
-        #     self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
-        #     self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
-        #     self.bind_clicked(ui.btn_4finge_pick, self._4finge_pick)
-        #     self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
-        #     self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
-        #     ui.btn_gripper.setText("灵巧手")
-
-        # # 夹爪模式
-        # else:
-        #     self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
-        #     qtbase.set_enable(ui.btn_2finge_pick, 0)
-        #     qtbase.set_enable(ui.btn_2finge_release, 0)
-        #     qtbase.set_enable(ui.btn_4finge_pick, 0)
-        #     qtbase.set_enable(ui.btn_4finge_release, 0)
-            # 隐藏灵巧手相关的组件
-            # set_layout_enabled(ui.hand_layout, bool(0))
-
         # 遥操作控制步长改变
         # 默认速度
         self.ui.step_posi.setValue(APPCFG['vel_linear_keyboard'])  # 键盘速度控制，线速度
@@ -135,19 +114,39 @@ class MainWindow(qtbase.QApp):
         # 1->0 触发 spacemouse_stop
         self.ui.spacemouse_usable.setChecked(bool(0))
         self.ui.msg.setText(f"服务地址: {API_IP}:{API_PORT}")
-        self.ui.arm_ip.setText(ARM_IP)
 
         #--------------------------------------------------------------------
 
         # 机械臂
         self.arm = RMArm()
-        self.arm.sig_connect_finished.connect(self.connect_finished)
-        
+        self.arm.sig_arm_connected.connect(self.arm_connected)
+        arm_ip = self.ui.arm_ip.text()
+        timeout = echo.ping(arm_ip)
+        if timeout == echo.PING_TIMEOUT:
+            printc(f"机械臂 {arm_ip} 响应超时！", "critical")
+
+        # 3d 鼠标状态监听
+        self.spacemouse_th = SpaceMouseListener()
+        if not self.spacemouse_th.device.is_ok:
+            printc(f"SpaceMouse {self.spacemouse_th.devtype} 不存在，请插入该外设！", "critical")
+
+        # 夹爪
+        self.gripper = Gripper(self.arm)
+
+        # 灵巧手
+        self.dexhand = DexterousHand(self.arm)
+        self.dexhand.sig_ui_pos.connect(self.dexhand_ui_pos_update)
+
+        # 遥操作线程
+        self.teleop_th = TeleopTask(self.arm, self.spacemouse_th, self.gripper, self.dexhand)
+
         # 服务器接口状态监听
         self.state_listener = StateListener(self)
         self.state_listener.sig_is_01_trig_for_spacemouse_usable.connect(self.spacemouse_trig_01)
         self.state_listener.sig_is_10_trig_for_spacemouse_usable.connect(self.spacemouse_trig_10)
         self.state_listener.sig_is_trig_for_ee_type.connect(self.ee_type_trig)
+        self.state_listener.initialize()
+        self.state_listener.start()
 
         #--------------------------------------------------------------------
 
@@ -176,15 +175,32 @@ class MainWindow(qtbase.QApp):
         self.arm_disconnect()
 
     def ee_type_trig(self):
+        ui = self.ui
         _type = Shared.ee_types[1]
         if _type == "dexhand":
             Shared.sm.set("is_dexhand", 1)
             self.dexhand.initialize()
             self.gripper.deinitialize()
+        
+            # 灵巧手模式
+            self.bind_clicked(ui.btn_2finge_pick, self.dexhand.two_finge_pick)
+            self.bind_clicked(ui.btn_2finge_release, self.dexhand.two_finge_release)
+            self.bind_clicked(ui.btn_4finge_pick, self.dexhand.five_finge_pick)
+            self.bind_clicked(ui.btn_4finge_release, self.dexhand.five_finge_release)
+            self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
+
         elif _type == "gripper":
             Shared.sm.set("is_dexhand", 0)
             self.gripper.initialize()
             self.dexhand.deinitialize()
+
+            # 夹爪模式
+            qtbase.set_enable(ui.btn_2finge_pick, 0)
+            qtbase.set_enable(ui.btn_2finge_release, 0)
+            qtbase.set_enable(ui.btn_4finge_pick, 0)
+            qtbase.set_enable(ui.btn_4finge_release, 0)
+            # 隐藏灵巧手相关的组件
+            set_layout_enabled(ui.hand_layout, bool(0))
 
     def rotate_thumb(self):
         v = self.ui.rotate_thumb.value()
@@ -192,45 +208,31 @@ class MainWindow(qtbase.QApp):
         self.ui.angle_f0.setValue(v)
 
 
-    def connect_finished(self):
+    def arm_connected(self):
         """尝试连接机械臂完成，可能没有连接成功"""
         if self.arm.is_connected:
             self.add_log("机械臂连接成功", color='green')
             self.add_timer("timer_update_msg", 200, self.update_msg, 1)
             stage = self.arm.get_collision()
             self.ui.spin_collision_state.setValue(stage)
-            self.add_log(f"当前碰撞等级: {stage} [范围: 1-8]", color='green')
-            self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
+            self.add_log(f"碰撞等级: {stage} [范围: 1-8]", color='green')
+            self.add_log(f"如需使用遥操作需手动开启服务，用完请手动关闭该服务", color='#ffab70')
             self.add_log("程序初始化完成", color="green")
             self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
             self.ui.btn_arm_connect.setEnabled(bool(0))
             self.ui.btn_arm_disconnect.setEnabled(bool(1))
-
-            # ---------------------------------
-
-            # 3d 鼠标状态监听
-            # devtype="SpaceMouse Pro Wireless"
-            devtype="SpaceMouse Compact"
-            self.spacemouse_th = SpaceMouseListener(devtype=devtype)
-
-            # 夹爪
-            self.gripper = Gripper(self.arm.robot)
-
-            # 灵巧手
-            self.dexhand = DexterousHand(self.arm.robot)
-            self.dexhand.sig_ui_pos.connect(self.dexhand_ui_pos_update)
-
-            # 遥操作线程
-            self.teleop_th = TeleopTask(self.arm, self.spacemouse_th, self.gripper, self.dexhand)
-            
-            # ---------------------------------
 
         else:
             self.add_log("机械臂连接失败", color='red')
             self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
             self.ui.btn_arm_connect.setEnabled(bool(1))
             self.ui.btn_arm_disconnect.setEnabled(bool(0))
-        
+            if not self.arm.is_connected:
+                printc("灵巧手/夹爪无法连接，因为机械臂暂时无法连接！", "critical")
+
+    
+    def arm_ip(self):
+        return self.ui.arm_ip.text().strip()
 
     def arm_connect(self):
         """机械臂连接"""
@@ -238,16 +240,15 @@ class MainWindow(qtbase.QApp):
             self.add_log("机械臂已经连接")
             return
          
-        self.ui.arm_ip.setText(ARM_IP)
-        ip = self.ui.arm_ip.text()
+        ip = self.arm_ip()
 
         # 检查连通性
-        timeout = echo.ping(ARM_IP)
+        timeout = echo.ping(ip)
         if timeout == echo.PING_TIMEOUT:
-            self.add_log(f"无法 ping 通 ARM_IP={ARM_IP}，请检查配置文件！", color='red')
+            self.add_log(f"无法 ping 通 ARM_IP={ip}，请检查配置文件！", color='red')
             return
 
-        self.add_log(f"ping={timeout} ms, ARM_IP={ARM_IP}，正在连接...")
+        self.add_log(f"ping={timeout} ms, ARM_IP={ip}，正在连接...")
         self.arm.myconnect(ip)
 
         self.ui.btn_arm_connect.setEnabled(bool(0))
@@ -318,6 +319,9 @@ class MainWindow(qtbase.QApp):
 
     #@require_arm_connected
     def spacemouse_start(self):
+        if not self.arm.is_connected:
+            self.add_log("机械臂未连接！", color="red")
+            return
         printc("启动 spacemouse 服务...")
         
         # 等待机械臂异步连接完成
@@ -343,6 +347,9 @@ class MainWindow(qtbase.QApp):
         Shared.SCALE_RPY = self.ui.step_angle2.value()
 
     def spacemouse_stop(self):
+        if not self.arm.is_connected:
+            self.add_log("机械臂未连接！", color="red")
+            return
         self.check_arm()
         self.add_log("SpaceMouse 服务退出", color="green")
         self.spacemouse_th.stop()
@@ -378,7 +385,7 @@ class MainWindow(qtbase.QApp):
         - 键盘长按会在第一次 isAutoRepeat=False, 之后是 True
         """
         key = event.text().upper()
-        if not key in [
+        if key not in [
              "G", 
              "W", "A", "S", "D", 
              "Q", "Z",
@@ -397,14 +404,14 @@ class MainWindow(qtbase.QApp):
 
         self.arm.kb(key, self.pos_vel, self.rot_vel)
 
-        if not event.isAutoRepeat():
+        if not event.isAutoRepeat():  # noqa: SIM102
             # self.add_key(key)
             if self.VERBOSE:
                 printc(f"keyPressEvent {event}")
             # incr = self.get_empty_incr()
 
         # return super().keyPressEvent(event)
-    def keyReleaseEvent(self, event: qtbase.QKeyEvent):
+    def keyReleaseEvent(self, event: qtbase.QKeyEvent):  # noqa: ARG002
         self.ui.ctl_state.setText("暂无控制状态")
 
     

@@ -16,10 +16,6 @@ q_appcfg = qtbase.QAppConfig(
 )
 
 APPCFG = q_appcfg.APPCFG_DICT
-ee_type = APPCFG['ee_type']
-IS_HAND_MODE = 1 if ee_type == "hand" else 0
-
 API_IP = APPCFG['API_IP']
 API_PORT = APPCFG['API_PORT']
-ARM_IP = APPCFG['ARM_IP']
 API_PRE = f"http://{API_IP}:{API_PORT}"

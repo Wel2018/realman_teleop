@@ -8,6 +8,7 @@ from toolbox.core.log import printc
 from Robotic_Arm.rm_robot_interface import *  # noqa: F403
 from .common.roh_registers_v1 import *  # noqa: F403
 from realman_teleop.core.shared import Shared
+from realman_teleop.core.arm.realman import RMArm
 
 
 # ----------------------------
@@ -21,21 +22,29 @@ class DexterousHand(qtbase.QObject):
     sig_move_finger = qtbase.Signal(int, int) # index: int, position: int
     sig_ui_pos = qtbase.Signal(list)
 
-    def __init__(self, robot: RoboticArm, com_port: int = 1, roh_addr: int = 2, delay: float = 1.0):  # noqa: F405
+    def __init__(self, arm: RMArm, com_port: int = 1, roh_addr: int = 2, delay: float = 1.0):  # noqa: F405
         super().__init__()
-        self.robot = robot
-        self.arm = self.robot
-        self.handle = self.robot.handle
+        self.arm = arm
+        if self.arm.is_connected:
+            self._arm = self.arm.robot
+            self._handle = self._arm.handle
+        else:
+            self._arm = None
+            self._handle = None
+        
         self.com_port = com_port
         self.roh_addr = roh_addr
         self.delay = delay
         self.now = [0, 0, 0, 0, 0]
+        self.is_initialized = 0
 
     def initialize(self):
         # 初始化机械臂通讯
         # self.robot = RobotArmController(arm_ip, 8080, 3)
-        self.robot.rm_close_modbustcp_mode()
-        self.robot.rm_set_modbus_mode(self.com_port, 115200, 1)
+        if not self._arm:
+            return
+        self._arm.rm_close_modbustcp_mode()
+        self._arm.rm_set_modbus_mode(self.com_port, 115200, 1)
         self.five_finge_release()
         printc(f"✅ 机械臂灵巧手初始化完成")
 
@@ -43,10 +52,12 @@ class DexterousHand(qtbase.QObject):
         self.th_get_hand_curr = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
         self.th_get_hand_curr.start()
         printc(f"✅ 机械臂灵巧手状态获取线程启动完成")
+        self.is_initialized = 1
 
     def deinitialize(self):
         # if hasattr(self, "th_get_hand_curr"):
         self.is_t_run = 0
+        self.is_initialized = 0
 
     def _get_arm_hand_curr(self):
         if not hasattr(self.arm, "hand"):
@@ -74,6 +85,8 @@ class DexterousHand(qtbase.QObject):
     # 底层寄存器操作
     # -------------------------------------------------------------
     def _write_registers(self, address, values):
+        if not self._arm:
+            return False
         params = rm_peripheral_read_write_params_t()  # noqa: F405
         params.port = self.com_port
         params.device = self.roh_addr
@@ -84,7 +97,7 @@ class DexterousHand(qtbase.QObject):
         for v in values:
             values_bytes.extend([(v >> 8) & 0xFF, v & 0xFF])
 
-        ret = self.robot.rm_write_registers(params, values_bytes)
+        ret = self._arm.rm_write_registers(params, values_bytes)
         if ret != 0:
             printc(f"[ERROR] Write_Registers failed: {ret}")
             return False
@@ -129,11 +142,11 @@ class DexterousHand(qtbase.QObject):
             data_num = int(read_params.num * 2)
             data = (c_int * data_num)()
             tag = rm_read_multiple_holding_registers(
-                self.handle, read_params, data)
+                self._handle, read_params, data)
             return tag, list(data)
         else:
             data = (c_int * 2)()
-            tag = rm_read_holding_registers(self.handle, read_params, data)
+            tag = rm_read_holding_registers(self._handle, read_params, data)
             return tag, list(data)
 
     # -------------------------------------------------------------

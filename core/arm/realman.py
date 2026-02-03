@@ -9,7 +9,7 @@ import time
 from toolbox.core.log import printc
 from toolbox.qt.common.debug import enable_debugpy
 from toolbox.qt import qtbase
-from realman_teleop import APPCFG, IS_HAND_MODE
+from realman_teleop import APPCFG
 # from .dexhand import DexterousHand
 from .calc import *  # noqa: F403
 
@@ -17,7 +17,7 @@ from .calc import *  # noqa: F403
 class RMArm(qtbase.QObject):
     """Realman 客户端（封装机器人/算法实例）"""
     sig_move_finger = qtbase.Signal(int, int) # index: int, position: int
-    sig_connect_finished = qtbase.Signal()
+    sig_arm_connected = qtbase.Signal()
 
     def __init__(self, arm_model: rm_robot_arm_model_e = rm_robot_arm_model_e.RM_MODEL_RM_63_III_E):
         super().__init__()
@@ -50,7 +50,7 @@ class RMArm(qtbase.QObject):
 
         if arm_id == -1:
             printc(f"机械臂连接失败！当前信息：ip={ip} port={port}", 'err')
-            self.sig_connect_finished.emit()
+            self.sig_arm_connected.emit()
             return
 
         # 打印并设置 tool frame（保留原行为）
@@ -78,7 +78,7 @@ class RMArm(qtbase.QObject):
             printc("==================================================")
             
         self.is_connected = 1
-        self.sig_connect_finished.emit()
+        self.sig_arm_connected.emit()
         
     def check(self):
         """检查连接状态"""

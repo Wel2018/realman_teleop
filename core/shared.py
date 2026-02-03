@@ -12,7 +12,7 @@ class Shared:
     is_joystick_enable = bool(1)   # 是否启用鼠标的手柄
     # is_spacemouse_usable = 0   # 3d 鼠标可用状态
     spacemouse_usables = [0,0]  # noqa: RUF012  # [prev, now]
-    ee_types = []  # noqa: RUF012  # [prev, now] # gripper, hand
+    ee_types = ["gripper", "gripper"]  # noqa: RUF012  # [prev, now] # gripper, hand
 
     # msg
     spacemouse_usable_msg = ""   # 3d 鼠标可用状态

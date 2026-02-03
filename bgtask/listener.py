@@ -25,7 +25,7 @@ class StateListener(qtbase.QAsyncTask):
     @property
     def is_dev(self):
         work_mode = APPCFG['work_mode']
-        is_dev = 1 if work_mode == "dev" else 0
+        return 1 if work_mode == "dev" else 0
 
     def initialize(self):
         # 监听 spacemouse 可用状态
@@ -84,7 +84,7 @@ class StateListener(qtbase.QAsyncTask):
         data = requests.get(f"{API_PRE}/api/v1/hardware/robot/spacemouse/usable", timeout=1)
         res = json.loads(data.text)
         usable: bool = res['data']['spacemouse_usable']
-        ee_type: bool = res['data']['category']   # gripper, hand
+        ee_type: str = res['data']['category']   # gripper, hand
 
         # 同步 msg
         msg1 = f"spacemouse_usable: {usable}"
@@ -105,7 +105,10 @@ class StateListener(qtbase.QAsyncTask):
         
         # 同步末端状态
         Shared.ee_types[0] = Shared.ee_types[1]   # prev
-        Shared.ee_types[1] = int(ee_type)   # now
+        Shared.ee_types[1] = ee_type   # now
+
+        if self.is_trig_for_ee_type:
+            self.win.ui.btn_gripper.setText(ee_type)
     
     @property
     def is_01_trig_for_spacemouse_usable(self):

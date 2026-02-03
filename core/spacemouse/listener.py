@@ -17,11 +17,12 @@ class SpaceMouseListener(qtbase.QAsyncTask):
     def __init__(
         self, 
         conf: dict = {}, 
-        devtype="SpaceMouse Compact", 
+        devtype="SpaceMouse Compact",  # "SpaceMouse Pro Wireless"
         ui_label=None,
         double_interval_ms: int = 250*2
     ):
         super().__init__(conf)
+        self.devtype = devtype
         self.device = SpaceMouseHandler(devtype)
         self.cur_state = {}
         self.ui_label = ui_label
