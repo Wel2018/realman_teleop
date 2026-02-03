@@ -140,6 +140,9 @@ class MainWindow(qtbase.QApp):
         # 遥操作线程
         self.teleop_th = TeleopTask(self.arm, self.spacemouse_th, self.gripper, self.dexhand)
 
+        # 触发一次
+        self.ee_type_trig()
+
         # 服务器接口状态监听
         self.state_listener = StateListener(self)
         self.state_listener.sig_is_01_trig_for_spacemouse_usable.connect(self.spacemouse_trig_01)
@@ -147,6 +150,9 @@ class MainWindow(qtbase.QApp):
         self.state_listener.sig_is_trig_for_ee_type.connect(self.ee_type_trig)
         self.state_listener.initialize()
         self.state_listener.start()
+
+        if self.state_listener.is_dev:
+            self.bind_clicked(ui.btn_gripper, self.trig_ee_type)
 
         #--------------------------------------------------------------------
 
@@ -157,6 +163,20 @@ class MainWindow(qtbase.QApp):
 
         # init ok
         self.add_log("初始化完成", color="green")
+
+
+    def trig_ee_type(self):
+        # 从夹爪切换为灵巧手
+        if Shared.ee_types[0] == "gripper" and Shared.ee_types[1] == "gripper":
+            Shared.ee_types[0] = "dexhand"
+            Shared.ee_types[1] = "dexhand"
+            self.ee_type_trig()
+
+        # 从灵巧手切换为夹爪
+        elif Shared.ee_types[0] == "dexhand" and Shared.ee_types[1] == "dexhand":
+            Shared.ee_types[0] = "gripper"
+            Shared.ee_types[1] = "gripper"
+            self.ee_type_trig()
 
 
     def dexhand_ui_pos_update(self, pos: list):
@@ -178,6 +198,7 @@ class MainWindow(qtbase.QApp):
         ui = self.ui
         _type = Shared.ee_types[1]
         if _type == "dexhand":
+            self.ui.btn_gripper.setText("灵巧手")
             Shared.sm.set("is_dexhand", 1)
             self.dexhand.initialize()
             self.gripper.deinitialize()
@@ -190,17 +211,18 @@ class MainWindow(qtbase.QApp):
             self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
 
         elif _type == "gripper":
+            self.ui.btn_gripper.setText("夹爪")
             Shared.sm.set("is_dexhand", 0)
             self.gripper.initialize()
             self.dexhand.deinitialize()
 
-            # 夹爪模式
-            qtbase.set_enable(ui.btn_2finge_pick, 0)
-            qtbase.set_enable(ui.btn_2finge_release, 0)
-            qtbase.set_enable(ui.btn_4finge_pick, 0)
-            qtbase.set_enable(ui.btn_4finge_release, 0)
-            # 隐藏灵巧手相关的组件
-            set_layout_enabled(ui.hand_layout, bool(0))
+        # 夹爪模式
+        enable = _type == "dexhand"
+        qtbase.set_enable(ui.btn_2finge_pick, enable)
+        qtbase.set_enable(ui.btn_2finge_release, enable)
+        qtbase.set_enable(ui.btn_4finge_pick, enable)
+        qtbase.set_enable(ui.btn_4finge_release, enable)
+        set_layout_enabled(ui.hand_layout, bool(enable))
 
     def rotate_thumb(self):
         v = self.ui.rotate_thumb.value()
@@ -413,6 +435,10 @@ class MainWindow(qtbase.QApp):
         # return super().keyPressEvent(event)
     def keyReleaseEvent(self, event: qtbase.QKeyEvent):  # noqa: ARG002
         self.ui.ctl_state.setText("暂无控制状态")
+
+
+    def close_ready(self):
+        self.state_listener.stop()
 
     
 def main():
