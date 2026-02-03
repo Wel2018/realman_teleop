@@ -4,8 +4,7 @@ import threading
 import time
 import json
 import requests
-from rich import print
-from realman_teleop.bgtask.runner import Runner
+import functools
 from toolbox.core.log import LogHelper, printc
 from loguru import logger
 from toolbox.comm.server_echo import ServerEcho
@@ -14,12 +13,19 @@ from toolbox.qt import qtbase
 from .ui.ui_form import Ui_DemoWindow
 from . import q_appcfg
 from . import APPCFG, IS_HAND_MODE, API_IP, API_PORT
-from . import ARM_IP, API_PORT, API_PRE
-from .bgtask.spacemouse import SpaceMouseListener
-from .bgtask.realman_arm import RealmanArmClient
-from .bgtask.realman_arm import RealmanArmTask
+from . import ARM_IP, API_PRE
+from .core.shared import Shared
 from .util import set_layout_visible, set_layout_enabled
-import functools
+
+
+# 核心组件
+from .core.arm.realman import RMArm   # 机械臂
+from .core.spacemouse.listener import SpaceMouseListener  # spacemouse
+from .core.end_effector.gripper import Gripper   # 夹爪
+from .core.end_effector.dexhand import DexterousHand   # 灵巧手
+from .bgtask.listener import StateListener   # 状态监听
+from .bgtask.teleop import TeleopTask        # 遥操作线程
+
 
 echo = ServerEcho()
 
@@ -30,7 +36,7 @@ def require_arm_connected(func):
     如果 `check_arm` 校验失败，会捕获异常并打印日志，不执行原函数
     """
     @functools.wraps(func)  # 保留原函数的元信息（如函数名、文档字符串）
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self, *args, **kwargs):  # noqa: ANN002
         try:
             # 执行机械臂连接状态校验
             self.check_arm()
@@ -38,12 +44,12 @@ def require_arm_connected(func):
             return func(self, *args, **kwargs)
         except AssertionError as e:
             # 捕获校验失败的异常，打印并记录日志
-            error_msg = f"执行 {func.__name__} 失败：{str(e)}"
+            error_msg = f"执行 {func.__name__} 失败：{e!s}"
             print(error_msg)  # 控制台打印
             logger.exception(error_msg)  # 日志文件记录
         except Exception as e:
             # 捕获其他意外异常，避免程序崩溃
-            error_msg = f"执行 {func.__name__} 时发生未知错误：{str(e)}"
+            error_msg = f"执行 {func.__name__} 时发生未知错误：{e!s}"
             print(error_msg)
             logger.exception(error_msg, exc_info=True)
     return wrapper
@@ -53,21 +59,12 @@ class MainWindow(qtbase.QApp):
     """应用具体实现"""
     # 定时器和线程名称
     TH_CTL_MODE = "teleop_ctl_mode"
-    TIMER_ROBOT_STATE = "robot_state"
-
-    is_quit_confirm = 0  # 程序退出确认
-    is_keyboard_ctrl = 1  # 键盘控制开关
-    # is_collect_data = 0  # 数据集收集开关
-    is_gripper_open = 1  # 当前夹爪状态
-    is_mirror = 0  # 是否镜像操控 
-    is_debug = 0
-    is_going_to_init_pos = 0
     VERBOSE = q_appcfg.VERBOSE
 
     def pre_init(self):
         return super().pre_init()
     
-    def post_init(self):
+    def post_init(self):  # noqa: PLR0915
         ui = self.ui
 
         self.set_theme("blue")
@@ -85,25 +82,24 @@ class MainWindow(qtbase.QApp):
         self.bind_clicked(ui.btn_setting, self.setting)
 
         # 灵巧手模式
-        if IS_HAND_MODE:
-            self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
-            self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
-            self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
-            self.bind_clicked(ui.btn_4finge_pick, self._4finge_pick)
-            self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
-            self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
-            ui.btn_gripper.setText("灵巧手")
+        # if IS_HAND_MODE:
+        #     self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
+        #     self.bind_clicked(ui.btn_2finge_pick, self._2finge_pick)
+        #     self.bind_clicked(ui.btn_2finge_release, self._2finge_release)
+        #     self.bind_clicked(ui.btn_4finge_pick, self._4finge_pick)
+        #     self.bind_clicked(ui.btn_4finge_release, self._4finge_release)
+        #     self.bind_clicked(ui.btn_rotate_thumb, self.rotate_thumb)
+        #     ui.btn_gripper.setText("灵巧手")
 
-        # 夹爪模式
-        else:
-            self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
-            qtbase.set_enable(ui.btn_2finge_pick, 0)
-            qtbase.set_enable(ui.btn_2finge_release, 0)
-            qtbase.set_enable(ui.btn_4finge_pick, 0)
-            qtbase.set_enable(ui.btn_4finge_release, 0)
-            
+        # # 夹爪模式
+        # else:
+        #     self.bind_clicked(ui.btn_gripper, self.set_gripper_or_hand)
+        #     qtbase.set_enable(ui.btn_2finge_pick, 0)
+        #     qtbase.set_enable(ui.btn_2finge_release, 0)
+        #     qtbase.set_enable(ui.btn_4finge_pick, 0)
+        #     qtbase.set_enable(ui.btn_4finge_release, 0)
             # 隐藏灵巧手相关的组件
-            set_layout_enabled(ui.hand_layout, bool(0))
+            # set_layout_enabled(ui.hand_layout, bool(0))
 
         # 遥操作控制步长改变
         # 默认速度
@@ -138,109 +134,70 @@ class MainWindow(qtbase.QApp):
         # 0->1 触发 spacemouse_start
         # 1->0 触发 spacemouse_stop
         self.ui.spacemouse_usable.setChecked(bool(0))
-        self.spacemouse_usable = bool(0)
-        self.spacemouse_usable_msg = ""
-
         self.ui.msg.setText(f"服务地址: {API_IP}:{API_PORT}")
         self.ui.arm_ip.setText(ARM_IP)
 
-        # 机械臂实例
-        self.arm = RealmanArmClient()
+        #--------------------------------------------------------------------
+
+        # 机械臂
+        self.arm = RMArm()
         self.arm.sig_connect_finished.connect(self.connect_finished)
-        self.runner = Runner(ui.spacemouse_trigger_mode, ui.spacemouse_usable)
-        self.runner.sig_on.connect(self.runner_on)
-        self.runner.sig_off.connect(self.runner_off)
-        self.runner.sig_msg.connect(self.add_log)
-        self.runner.start()
+        
+        # 服务器接口状态监听
+        self.state_listener = StateListener(self)
+        self.state_listener.sig_is_01_trig_for_spacemouse_usable.connect(self.spacemouse_trig_01)
+        self.state_listener.sig_is_10_trig_for_spacemouse_usable.connect(self.spacemouse_trig_10)
+        self.state_listener.sig_is_trig_for_ee_type.connect(self.ee_type_trig)
+
+        #--------------------------------------------------------------------
 
         self.ui.btn_arm_connect.setEnabled(bool(1))
         self.ui.btn_arm_disconnect.setEnabled(bool(0))
+        self.ui.step_posi2.valueChanged.connect(self.spacemouse_speed_update)
+        self.ui.step_angle2.valueChanged.connect(self.spacemouse_speed_update)
 
         # init ok
         self.add_log("初始化完成", color="green")
 
-    def runner_on(self):
+
+    def dexhand_ui_pos_update(self, pos: list):
+        self.ui.pos_f0.setValue(pos[0])
+        self.ui.pos_f1.setValue(pos[1])
+        self.ui.pos_f2.setValue(pos[2])
+        self.ui.pos_f3.setValue(pos[3])
+        self.ui.pos_f4.setValue(pos[4])
+
+    def spacemouse_trig_01(self):
         self.arm_connect()
         self.spacemouse_start()
 
-    def runner_off(self):
+    def spacemouse_trig_10(self):
         self.spacemouse_stop()
         self.arm_disconnect()
 
+    def ee_type_trig(self):
+        _type = Shared.ee_types[1]
+        if _type == "dexhand":
+            Shared.sm.set("is_dexhand", 1)
+            self.dexhand.initialize()
+            self.gripper.deinitialize()
+        elif _type == "gripper":
+            Shared.sm.set("is_dexhand", 0)
+            self.gripper.initialize()
+            self.dexhand.deinitialize()
+
     def rotate_thumb(self):
         v = self.ui.rotate_thumb.value()
-        self.arm.hand.rotate_thumb(v)
+        self.dexhand._rotate_thumb(v)  # noqa: SLF001
         self.ui.angle_f0.setValue(v)
 
-    def _get_arm_hand_curr(self):
-        if not hasattr(self.arm, "hand"):
-            printc("arm 没有初始化 hand 灵巧手！")
-            return
-        
-        self.is_t_run = 1
-        while self.is_t_run:
-            curr = self.arm.hand.get_current_positions()
-            printc(f"curr={curr}")
-            if curr is None:
-                continue
-            self.ui.pos_f0.setValue(curr[0])
-            self.ui.pos_f1.setValue(curr[1])
-            self.ui.pos_f2.setValue(curr[2])
-            self.ui.pos_f3.setValue(curr[3])
-            self.ui.pos_f4.setValue(curr[4])
-            time.sleep(1)
-
-    @require_arm_connected
-    def set_gripper(self):
-        if not self.arm.is_hand_opened:
-            self.arm.gripper_open()
-        else:
-            self.arm.gripper_close()
-
-    @require_arm_connected
-    def set_hand(self):
-        if not self.arm.is_hand_opened:
-            self.arm.hand_open()
-        else:
-            self.arm.hand_close()
-
-    def set_gripper_or_hand(self):
-        if IS_HAND_MODE:
-            self.set_hand()
-        else:
-            self.set_gripper()
-
-    def _2finge_release(self):
-        self.arm.hand.open_2finger()
-        self._hand_sleep()
-        self.arm.hand.rotate_thumb(0)
-
-    def _2finge_pick(self):
-        self.arm.hand.rotate_thumb(90)
-        self._hand_sleep()
-        self.arm.hand.close_2finger()
-
-    def _4finge_release(self):
-        self.arm.hand.open_finger(0)
-        self._hand_sleep()
-        self.arm.hand.open_4finger()
-        self.arm.hand.rotate_thumb(0)
-
-    def _4finge_pick(self):
-        self.arm.hand.close_4finger()
-        self.arm.hand.rotate_thumb(100)
-        self._hand_sleep()
-        self.arm.hand.close_finger(0)
-
-    def _hand_sleep(self):
-        time.sleep(0.3)
 
     def connect_finished(self):
         """尝试连接机械臂完成，可能没有连接成功"""
         if self.arm.is_connected:
             self.add_log("机械臂连接成功", color='green')
             self.add_timer("timer_update_msg", 200, self.update_msg, 1)
-            stage = self.arm_get_collision()
+            stage = self.arm.get_collision()
             self.ui.spin_collision_state.setValue(stage)
             self.add_log(f"当前碰撞等级: {stage} [范围: 1-8]", color='green')
             self.add_log(f"【遥控功能】如需使用 SpaceMouse 遥操作需手动开启服务，不再使用时请手动关闭该服务", color='#ffab70')
@@ -248,11 +205,26 @@ class MainWindow(qtbase.QApp):
             self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
             self.ui.btn_arm_connect.setEnabled(bool(0))
             self.ui.btn_arm_disconnect.setEnabled(bool(1))
+
+            # ---------------------------------
+
+            # 3d 鼠标状态监听
+            # devtype="SpaceMouse Pro Wireless"
+            devtype="SpaceMouse Compact"
+            self.spacemouse_th = SpaceMouseListener(devtype=devtype)
+
+            # 夹爪
+            self.gripper = Gripper(self.arm.robot)
+
+            # 灵巧手
+            self.dexhand = DexterousHand(self.arm.robot)
+            self.dexhand.sig_ui_pos.connect(self.dexhand_ui_pos_update)
+
+            # 遥操作线程
+            self.teleop_th = TeleopTask(self.arm, self.spacemouse_th, self.gripper, self.dexhand)
             
-            # 启动灵巧手状态实时获取线程
-            if IS_HAND_MODE:
-                self.th_get_arm_hand_curr = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
-                self.th_get_arm_hand_curr.start()
+            # ---------------------------------
+
         else:
             self.add_log("机械臂连接失败", color='red')
             self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
@@ -276,11 +248,10 @@ class MainWindow(qtbase.QApp):
             return
 
         self.add_log(f"ping={timeout} ms, ARM_IP={ARM_IP}，正在连接...")
-        self.arm.connect(ip)
+        self.arm.myconnect(ip)
 
         self.ui.btn_arm_connect.setEnabled(bool(0))
         self.ui.btn_arm_disconnect.setEnabled(bool(0))
-
 
     def arm_disconnect(self):
         """机械臂断开连接"""
@@ -289,29 +260,23 @@ class MainWindow(qtbase.QApp):
             return
         
         # 检查鼠标服务是否关闭
-        if self.is_spacemouse_running:
-             self.spacemouse_stop()
+        self.spacemouse_stop()
+
         # 断开机械臂
-        self.arm.is_connected = 0
         self.remove_timer("timer_update_msg")
-        self.arm.disconnect()
+        self.arm.mydisconnect()
         self.add_log("机械臂已断开", color='green')
         self.ui.label_arm.setStyleSheet("color: red; background-color: #f4cce4;")
-
-        if IS_HAND_MODE:
-            if self.th_get_arm_hand_curr.is_alive():
-                #  self.t.terminate()
-                self.is_t_run = 0
     
     def update_msg(self):
         """更新机械臂状态信息"""
-        ret, data = self.arm.get_pose()
+        _ret, data = self.arm.get_pose()
         j = data['joint']
         p = data['pose']
         err = data['err']
         
-        p = [round(el,2) for el in p]
-        j = [round(el,2) for el in j]
+        p = [round(el,2) for el in p]  # ty:ignore[no-matching-overload]
+        j = [round(el,2) for el in j]  # ty:ignore[no-matching-overload]
         # self.add_log(f"pose p={p}")
         # self.add_log(f"pose j={j}")
         self.ui.msg.setText(f"p={p}\n j={j}\n err={err}")
@@ -326,9 +291,6 @@ class MainWindow(qtbase.QApp):
         self.add_log(f"设置碰撞等级: {stage}, ret={ret}", color='green')
         self.add_log(f"碰撞防护等级状态：{stage1} → {stage2}")
 
-    def arm_get_collision(self):
-        _, stage = self.arm.robot.rm_get_collision_stage()
-        return stage
 
     def arm_recover(self):
         self.check_arm()
@@ -357,58 +319,40 @@ class MainWindow(qtbase.QApp):
     #@require_arm_connected
     def spacemouse_start(self):
         printc("启动 spacemouse 服务...")
-        printc("等待机械臂启动完成...")
-        self.arm.t_connect.join()
-        time.sleep(2)
+        
+        # 等待机械臂异步连接完成
+        self.arm.wait_connect()
         self.check_arm()
-        printc("机械臂启动完成！")
-        if self.task_manager.is_task_running(self.TH_CTL_MODE):
-            self.add_log("SpaceMouse 服务已经启动")
-            return
 
-        self.add_log("SpaceMouse 服务启动", color='green')
-        # devtype="SpaceMouse Pro Wireless"
-        devtype="SpaceMouse Compact"
+        # 启动鼠标监听服务
+        self.spacemouse_th.start()
+        self.add_log("SpaceMouse 服务已启动", color='green')
 
-        # 启动 3d 鼠标监听服务
-        self.spacemouse_th = SpaceMouseListener(devtype=devtype)
-        self.add_th(self.TH_CTL_MODE, self.spacemouse_th, 1)
-        self.ui.step_posi2.valueChanged.connect(self.spacemouse_speed_update)
-        self.ui.step_angle2.valueChanged.connect(self.spacemouse_speed_update)
-
-        # 启动机械臂循环控制服务
-        self.arm_task = RealmanArmTask(self.arm, self.spacemouse_th)
-        self.add_th("arm_task", self.arm_task, 1)
+        # 启动机械臂伺服
+        self.teleop_th.start()
+        self.add_log("机械臂伺服服务已启动", color='green')
 
         # 设置状态文本
         self.ui.label_spacemouse.setStyleSheet("color: green; background-color: #03db6b;")
-        self.is_spacemouse_running = 1
 
         # 启动时加载默认速度
         self.spacemouse_speed_update(0)
 
     def spacemouse_speed_update(self, value):
-        if not self.is_spacemouse_running:
-            return
-        self.arm_task.SCALE_XYZ = self.ui.step_posi2.value()
-        self.arm_task.SCALE_RPY = self.ui.step_angle2.value()
+        Shared.SCALE_XYZ = self.ui.step_posi2.value()
+        Shared.SCALE_RPY = self.ui.step_angle2.value()
 
     def spacemouse_stop(self):
         self.check_arm()
-        if not self.is_spacemouse_running:
-            self.add_log("SpaceMouse 服务已经退出")
-            return
-        
         self.add_log("SpaceMouse 服务退出", color="green")
-        self.stop_th(self.TH_CTL_MODE)
-        self.stop_th("arm_task")
+        self.spacemouse_th.stop()
+        self.teleop_th.stop()
         self.ui.label_spacemouse.setStyleSheet("color: red; background-color: #f4cce4;")
-        self.is_spacemouse_running = 0
 
     def setting(self):
          """打开配置"""
-         b = os.path.dirname(__file__)
-         open_local_file(os.path.join(b, "appcfg.yaml"), is_relative=1)
+         b = os.path.dirname(__file__)  # noqa: PTH120
+         open_local_file(os.path.join(b, "appcfg.yaml"), is_relative=1)  # noqa: PTH118
 
     def __init__(self, parent = None):
         ui = self.ui = Ui_DemoWindow()
@@ -417,106 +361,16 @@ class MainWindow(qtbase.QApp):
         self.init(ui_logger=ui.txt_log, logger=logger)
         self.post_init()
     
+
     def check_arm(self):
-        msg = "请先连接机械臂"
-        if not self.arm.is_connected:
-            self.add_log(msg, color='red') 
-            printc(msg, 'err')
-        assert self.arm.is_connected == 1, msg
+        self.arm.check_arm()
 
     def gozero(self):
         """回到初始位置"""
         self.check_arm()
         self.add_log("机械臂回到初始位置（快捷键：G）")
-        if not self.is_going_to_init_pos:
-            self.add_log("正在回到初始位置中...")
-            self.is_going_to_init_pos = 1
-            self.arm.gozero()
-            self.is_going_to_init_pos = 0
-            self.add_log("机械臂已归位！")
+        self.arm.gozero()
 
-
-    def get_pose(self) -> dict:
-        """获取机械臂当前位置"""
-        self.check_arm()
-        ret, data = self.arm.get_pose()
-        pose: list = data['pose']
-        return {
-            "x": pose[0],
-            "y": pose[1],
-            "z": pose[2],
-            "R": pose[3],
-            "P": pose[4],
-            "Y": pose[5],
-        }
-    
-    def get_empty_incr(self) -> dict:
-        """获取当前增量"""
-        return {
-            'x': .0,
-            'y': .0,
-            'z': .0,
-            'R': .0,
-            'P': .0,
-            'Y': .0,
-        }
-
-    def get_incr(self, key: str) -> dict:
-        """获取当前增量"""
-        incr = self.get_empty_incr()
-        step_xyz = self.pos_vel
-        step_RPY = self.rot_vel
-
-        if key == "A":
-                incr['x'] = step_xyz
-        elif key == "D":
-                incr['x'] = -step_xyz
-        elif key == "W":
-                incr['y'] = step_xyz
-        elif key == "S":
-                incr['y'] = -step_xyz
-        elif key == "Q":
-                incr['z'] = step_xyz
-        elif key == "Z":
-                incr['z'] = -step_xyz
-
-        elif key == "U":
-                incr['R'] = step_RPY
-        elif key == "J":
-                incr['R'] = -step_RPY
-        elif key == "I":
-                incr['P'] = step_RPY
-        elif key == "K":
-                incr['P'] = -step_RPY
-        elif key == "O":
-                incr['Y'] = step_RPY
-        elif key == "L":
-                incr['Y'] = -step_RPY
-        return incr
-
-    def incr_has_xyz(self, incr: dict) -> bool:
-        """判断增量是否包含 xyz 轴"""
-        return incr['x'] or incr['y'] or incr['z']
-
-    def incr_has_RPY(self, incr: dict) -> bool:
-        """判断增量是否包含 RPY 轴"""
-        return incr['R'] or incr['P'] or incr['Y']
-
-    def get_new_pose(self, pose: dict, incr: dict) -> dict:
-        """根据增量获取新位置"""
-        pose_ = pose.copy()
-        if self.incr_has_xyz(incr):
-            for i, k in enumerate(['x','y','z']):
-                pose_[k] += incr[k]
-        if self.incr_has_RPY(incr):
-            for i, k in enumerate(['R','P','Y']):
-                pose_[k] += incr[k]
-        return pose_
-
-
-    def pose_to_list(self, pose: dict) -> list:
-        """将 pose 转换为列表"""
-        return [pose['x'], pose['y'], pose['z'], pose['R'], pose['P'], pose['Y']]
 
     def keyPressEvent(self, event: qtbase.QKeyEvent):
         """按下按键：键盘打开 caps lock 模式，可以实现长按模式
@@ -541,49 +395,7 @@ class MainWindow(qtbase.QApp):
             self.add_log("QApp reload", color="red")
             return
 
-        pose = self.get_pose()
-        incr = self.get_incr(key)
-        printc(f"incr={incr}")
-
-        if key == "G":
-            self.arm.gozero()
-            self.add_log("回到零位")
-            return
-        
-        # pose_bak = pose.copy()
-
-        # 处理 xyz 轴 --------------------------
-        if self.incr_has_xyz(incr):
-            pose_ = self.get_new_pose(pose, incr)
-            ret = self.arm.robot.rm_movep_canfd(self.pose_to_list(pose_), False, 1, 60)
-            
-            if self.VERBOSE:
-                printc("xyz" + "-"*50)
-                printc(f"ret={ret}, incr={incr}")
-                printc(f"new_pose={pose_}")
-                return
-        
-        # 处理 RPY 轴 --------------------------
-        if self.incr_has_RPY(incr):
-            pose_ = self.get_new_pose(pose, incr)
-            theta = incr['R'] if incr['R'] else incr['P'] if incr['P'] else incr['Y']
-
-            if incr['R']:
-                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'x', theta)
-            elif incr['P']:
-                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'y', theta)
-            elif incr['Y']:
-                new_pose = self.arm.matrix_pose_rotate(self.pose_to_list(pose_), 'z', theta)
-            else:
-                raise ValueError
-            
-            ret = self.arm.robot.rm_movep_canfd(new_pose, False, 0, 60)
-
-            if self.VERBOSE:
-                printc("RPY" + "-"*50)
-                printc(f"ret={ret}, incr={incr}")
-                printc(f"ret={ret}, new_pose={new_pose}")
-
+        self.arm.kb(key, self.pos_vel, self.rot_vel)
 
         if not event.isAutoRepeat():
             # self.add_key(key)
@@ -593,13 +405,7 @@ class MainWindow(qtbase.QApp):
 
         # return super().keyPressEvent(event)
     def keyReleaseEvent(self, event: qtbase.QKeyEvent):
-        # return super().keyReleaseEvent(event)
-        # self.check_arm()
         self.ui.ctl_state.setText("暂无控制状态")
-
-
-    def close_ready(self):
-        ...
 
     
 def main():

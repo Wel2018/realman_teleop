@@ -1,7 +1,7 @@
 ##################################
 # realman_teleop app config
 # author: wel2018
-# date: 2026-01-09
+# date: 2026-02-03
 ##################################
 
 # API 服务地址
@@ -15,7 +15,7 @@ ARM_PORT: 8080
 # spacemouse 监听器工作模式
 # dev: 开发模式，鼠标控制状态不走 API 服务
 # prod: 生产模式，鼠标控制状态由 API 服务控制
-spacemouse_mode: dev
+work_mode: dev
 
 # spacemouse 可用状态获取时间间隔（ms）
 spacemouse_usage_intv: 1000

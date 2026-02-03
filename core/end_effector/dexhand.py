@@ -1,12 +1,13 @@
+import threading
 import time
 import os
 import sys
 
-import time
-from Robotic_Arm.rm_robot_interface import * # type: ignore
+from toolbox.qt import qtbase
 from toolbox.core.log import printc
-from toolbox.qt import qtbase  # type: ignore
-from .common.roh_registers_v1 import *  # type: ignore
+from Robotic_Arm.rm_robot_interface import *  # noqa: F403
+from .common.roh_registers_v1 import *  # noqa: F403
+from realman_teleop.core.shared import Shared
 
 
 # ----------------------------
@@ -18,28 +19,62 @@ class DexterousHand(qtbase.QObject):
     灵巧手控制类：支持五指独立控制、整体开合、旋转拇指根部等操作。
     """
     sig_move_finger = qtbase.Signal(int, int) # index: int, position: int
+    sig_ui_pos = qtbase.Signal(list)
 
-    def __init__(self, robot: RoboticArm, com_port: int = 1, roh_addr: int = 2, delay: float = 1.0):
+    def __init__(self, robot: RoboticArm, com_port: int = 1, roh_addr: int = 2, delay: float = 1.0):  # noqa: F405
         super().__init__()
         self.robot = robot
+        self.arm = self.robot
         self.handle = self.robot.handle
         self.com_port = com_port
         self.roh_addr = roh_addr
         self.delay = delay
+        self.now = [0, 0, 0, 0, 0]
 
+    def initialize(self):
         # 初始化机械臂通讯
         # self.robot = RobotArmController(arm_ip, 8080, 3)
         self.robot.rm_close_modbustcp_mode()
-        self.robot.rm_set_modbus_mode(com_port, 115200, 1)
+        self.robot.rm_set_modbus_mode(self.com_port, 115200, 1)
+        self.five_finge_release()
         printc(f"✅ 机械臂灵巧手初始化完成")
-        self.arm = self.robot
-        self.now = [0, 0, 0, 0, 0]
+
+        # 启动灵巧手状态实时获取线程
+        self.th_get_hand_curr = threading.Thread(target=self._get_arm_hand_curr, daemon=True)
+        self.th_get_hand_curr.start()
+        printc(f"✅ 机械臂灵巧手状态获取线程启动完成")
+
+    def deinitialize(self):
+        # if hasattr(self, "th_get_hand_curr"):
+        self.is_t_run = 0
+
+    def _get_arm_hand_curr(self):
+        if not hasattr(self.arm, "hand"):
+            printc("arm 没有初始化 hand 灵巧手！")
+            return
+        
+        self.is_t_run = 1
+        while self.is_t_run:
+            curr = self.get_current_positions()
+            printc(f"curr={curr}")
+            if curr is None:
+                continue
+
+            # self.ui.pos_f0.setValue
+            self.sig_ui_pos.emit([
+                curr[0],
+                curr[1],
+                curr[2],
+                curr[3],
+                curr[4],
+            ])
+            time.sleep(1)
 
     # -------------------------------------------------------------
     # 底层寄存器操作
     # -------------------------------------------------------------
     def _write_registers(self, address, values):
-        params = rm_peripheral_read_write_params_t()  # type: ignore
+        params = rm_peripheral_read_write_params_t()  # noqa: F405
         params.port = self.com_port
         params.device = self.roh_addr
         params.address = address
@@ -56,13 +91,13 @@ class DexterousHand(qtbase.QObject):
         return True
 
     def _read_registers(self, address, num):
-        params = rm_peripheral_read_write_params_t()  # type: ignore
+        params = rm_peripheral_read_write_params_t()  # noqa: F405
         params.port = self.com_port
         params.device = self.roh_addr
         params.address = address
         params.num = num
 
-        tag, ret = self.Read_Registers(params)
+        tag, ret = self._read_registers_by_p(params)
         # tag, ret = self.robot.rm_read_modbus_tcp_input_registers(params)
         if tag != 0:
             printc(f"[ERROR] Read_Registers failed: {tag}")
@@ -72,7 +107,7 @@ class DexterousHand(qtbase.QObject):
         return data
 
 
-    def Read_Registers(self, read_params: rm_peripheral_read_write_params_t) -> tuple[int, list[int]]:
+    def _read_registers_by_p(self, read_params: rm_peripheral_read_write_params_t) -> tuple[int, list[int]]:  # noqa: F405
         """
         读多个保存寄存器
 
@@ -104,7 +139,7 @@ class DexterousHand(qtbase.QObject):
     # -------------------------------------------------------------
     # 手指控制方法
     # -------------------------------------------------------------
-    def open_all(self):
+    def _open_all(self):
         """打开所有手指"""
         printc("[ACTION] Open all fingers")
         # self.now = [0, 65535, 65535, 65535, 65535]
@@ -113,7 +148,7 @@ class DexterousHand(qtbase.QObject):
         self.now = [0, 0, 0, 0, 0]
         self._write_registers(ROH_FINGER_POS_TARGET0, self.now)  # type: ignore
 
-    def close_all(self):
+    def _close_all(self):
         """闭合所有手指"""
         printc("[ACTION] Close all fingers")
         # self.now = [0, 65535, 65535, 65535, 65535]
@@ -135,7 +170,7 @@ class DexterousHand(qtbase.QObject):
         self.sig_move_finger.emit(index, position)
     
     
-    def open_4finger(self):
+    def _open_4finger(self):
         """
         控制单个手指（0-4为手指，5为拇指根部）
         position: 0~65535
@@ -146,7 +181,7 @@ class DexterousHand(qtbase.QObject):
         # for i in range(4):
         #     self.sig_move_finger.emit(i+1, OPEN)
     
-    def open_2finger(self):
+    def _open_2finger(self):
         """
         控制单个手指（0-4为手指，5为拇指根部）
         position: 0~65535
@@ -157,7 +192,7 @@ class DexterousHand(qtbase.QObject):
         # for i in range(4):
         #     self.sig_move_finger.emit(i+1, OPEN)
         
-    def close_4finger(self):
+    def _close_4finger(self):
         """
         控制单个手指（0-4为手指，5为拇指根部）
         position: 0~65535
@@ -167,7 +202,7 @@ class DexterousHand(qtbase.QObject):
         CLOSE = 65535
         self._write_registers(ROH_FINGER_POS_TARGET1, [CLOSE, CLOSE, CLOSE, CLOSE])
         
-    def close_2finger(self):
+    def _close_2finger(self):
         """
         控制单个手指（0-4为手指，5为拇指根部）
         position: 0~65535
@@ -176,7 +211,7 @@ class DexterousHand(qtbase.QObject):
         self._write_registers(ROH_FINGER_POS_TARGET0, [CLOSE, CLOSE])
         
 
-    def close_finger(self, index: int, degree: float = 100):
+    def _close_finger(self, index: int, degree: float = 100):
         """
         以百分比方式闭合单个手指
         degree: 0-100，对应 0~65535
@@ -184,11 +219,11 @@ class DexterousHand(qtbase.QObject):
         pos = int(65535 * (degree / 100.0))
         self.move_finger(index, pos)
 
-    def open_finger(self, index: int):
+    def _open_finger(self, index: int):
         """打开指定手指"""
         self.move_finger(index, 0)
    
-    def rotate_thumb(self, degree: float = 100):
+    def _rotate_thumb(self, degree: float = 100):
         """旋转拇指根部"""
         pos = int(65535 * (degree / 100.0))
         self._write_registers(ROH_FINGER_POS_TARGET5, [pos])  # type: ignore
@@ -208,27 +243,67 @@ class DexterousHand(qtbase.QObject):
     # -------------------------------------------------------------
     # 综合动作示例
     # -------------------------------------------------------------
-    def test_sequence(self, loops=5):
-        for i in range(loops):
-            printc(f"\n--- Loop {i + 1} ---")
+    # def test_sequence(self, loops=5):
+    #     for i in range(loops):
+    #         printc(f"\n--- Loop {i + 1} ---")
+    #         # 拇指闭合-张开
+    #         self.close_finger(0)
+    #         self.open_finger(0)
+    #         # 拇指旋转
+    #         self.rotate_thumb(100)
+    #         self.rotate_thumb(0)
+    #         # 其他手指闭合-张开
+    #         self._write_registers(ROH_FINGER_POS_TARGET1, [65535, 65535, 65535, 65535])
+    #         time.sleep(self.delay)
+    #         self._write_registers(ROH_FINGER_POS_TARGET1, [0, 0, 0, 0])
+    #         time.sleep(self.delay)
+    #         target = self.get_target_positions()
+    #         current = self.get_current_positions()
+    #         printc(f"Target: {target}")
+    #         printc(f"Current: {current}")
+    #     printc("[INFO] Test sequence complete.")
 
-            # 拇指闭合-张开
-            self.close_finger(0)
-            self.open_finger(0)
 
-            # 拇指旋转
-            self.rotate_thumb(100)
-            self.rotate_thumb(0)
+    # -------------------------------------------------------------
+    # 常用组合操作
+    # -------------------------------------------------------------
 
-            # 其他手指闭合-张开
-            self._write_registers(ROH_FINGER_POS_TARGET1, [65535, 65535, 65535, 65535])  # type: ignore
-            time.sleep(self.delay)
-            self._write_registers(ROH_FINGER_POS_TARGET1, [0, 0, 0, 0])  # type: ignore
-            time.sleep(self.delay)
+    def two_finge_release(self):
+        """取消两指捏住"""
+        self._open_2finger()
+        self._hand_sleep()
+        self._rotate_thumb(0)
+        Shared.is_ee_opened = 1
 
-            target = self.get_target_positions()
-            current = self.get_current_positions()
-            printc(f"Target: {target}")
-            printc(f"Current: {current}")
+    def two_finge_pick(self):
+        """两指捏住"""
+        self._rotate_thumb(90)
+        self._hand_sleep()
+        self._close_2finger()
+        Shared.is_ee_opened = 0
 
-        printc("[INFO] Test sequence complete.")
+    def five_finge_release(self):
+        """取消五指捏住"""
+        self._open_finger(0)
+        self._hand_sleep()
+        self._open_4finger()
+        self._rotate_thumb(100)
+        Shared.is_ee_opened = 1
+
+    def five_finge_pick(self):
+        """五指捏住"""
+        self._close_4finger()
+        self._rotate_thumb(100)
+        self._hand_sleep()
+        self._close_finger(0)
+        Shared.is_ee_opened = 0
+    
+    def pick(self):
+        self.five_finge_pick()
+
+    def release(self):
+        self.five_finge_release()
+
+    def _hand_sleep(self):
+        #self.msleep(300)
+        time.sleep(300/1000)
