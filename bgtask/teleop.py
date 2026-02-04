@@ -40,7 +40,7 @@ class TeleopTask(qtbase.QAsyncTask):
         'state': {...}
         ```
         """
-        printc(f"on_spacemouse_btn_clicked: {payload}")
+        printc(f"on_spacemouse_btn_clicked: {payload}", "critical")
         self.set_joystick_enable(0)
         
         event_type = payload.get('event')  # 'single' or 'double'
@@ -168,10 +168,10 @@ class TeleopTask(qtbase.QAsyncTask):
                 continue
 
             # 获取当前机械臂状态（ret, data）
-            ret, data = self.arm.get_pose()
+            ret, data = self.arm._get_pose()
             if ret != 0 or not data or 'pose' not in data:
                 # 获取失败时短暂等待并跳过
-                printc(f"get_pose failed or missing data, ret={ret}", 'error')
+                printc(f"get_pose 失败 or 数据包丢失, ret={ret} data={data}", 'error')
                 self.msleep(Shared.LOOP_SLEEP_MS)
                 continue
 

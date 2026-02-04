@@ -140,9 +140,6 @@ class MainWindow(qtbase.QApp):
         # 遥操作线程
         self.teleop_th = TeleopTask(self.arm, self.spacemouse_th, self.gripper, self.dexhand)
 
-        # 触发一次
-        self.ee_type_trig()
-
         # 服务器接口状态监听
         self.state_listener = StateListener(self)
         self.state_listener.sig_is_01_trig_for_spacemouse_usable.connect(self.spacemouse_trig_01)
@@ -243,6 +240,10 @@ class MainWindow(qtbase.QApp):
             self.ui.label_arm.setStyleSheet("color: green; background-color: #03db6b;")
             self.ui.btn_arm_connect.setEnabled(bool(0))
             self.ui.btn_arm_disconnect.setEnabled(bool(1))
+            printc("机械臂初始化完成", "critical")
+
+            # 触发一次
+            self.ee_type_trig()
 
         else:
             self.add_log("机械臂连接失败", color='red')
@@ -293,7 +294,7 @@ class MainWindow(qtbase.QApp):
     
     def update_msg(self):
         """更新机械臂状态信息"""
-        _ret, data = self.arm.get_pose()
+        ret, data = self.arm._get_pose()
         j = data['joint']
         p = data['pose']
         err = data['err']

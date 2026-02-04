@@ -18,14 +18,21 @@ class Gripper(qtbase.QObject):
         self.is_initialized = 0
 
     def initialize(self):
-        self.release()
+        if self.arm.is_connected:
+            self._arm = self.arm.robot
+        else:
+            self._arm = None
         self.is_initialized = 1
+        printc(f"gripper 初始化 {self._arm}")
+        self.release()
 
     def deinitialize(self):
         self.is_initialized = 0
+        printc("gripper 反初始化")
 
     def pick(self):
         if not self._arm:
+            printc("机械臂未初始化，夹爪无法执行 pick 动作", 'error')
             return None
         try:
             ret = self._arm.rm_set_gripper_pick(APPCFG['arm_gripper_speed'], APPCFG['arm_gripper_force'], True, 10)
@@ -37,6 +44,7 @@ class Gripper(qtbase.QObject):
 
     def release(self):
         if not self._arm:
+            printc("机械臂未初始化，夹爪无法执行 release 动作", 'error')
             return None
             
         try:

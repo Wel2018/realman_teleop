@@ -80,7 +80,7 @@ class SpaceMouseListener(qtbase.QAsyncTask):
                 payload = {
                     'event': ev['type'],   # 'single' or 'double'
                     'btn': ev['btn'],      # 'btn1' / 'btn2' / ...
-                    'state': state         # 当前整帧状态（含位姿）
+                    # 'state': state         # 当前整帧状态（含位姿）
                 }
                 # 立即发信号到主线程处理按钮事件（不会 flood，因为仅在状态边沿发生）
                 self.sig_data.emit(payload)
@@ -102,7 +102,7 @@ class SpaceMouseListener(qtbase.QAsyncTask):
             payload = {
                 'event': 'single',      # 'single' or 'double'
                 'btn': click_btn_name,  # 'btn1' / 'btn2' / ...
-                'state': state          # 当前整帧状态（含位姿）
+                # 'state': state          # 当前整帧状态（含位姿）
             }
             # 立即发信号到主线程处理按钮事件
             self.sig_data.emit(payload)

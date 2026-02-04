@@ -1,4 +1,4 @@
-bgtask/common
+core/end_effector/common
 appcfg.yaml
 version.py
 ui

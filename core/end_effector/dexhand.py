@@ -41,6 +41,10 @@ class DexterousHand(qtbase.QObject):
     def initialize(self):
         # 初始化机械臂通讯
         # self.robot = RobotArmController(arm_ip, 8080, 3)
+        if self.arm.is_connected:
+            self._arm = self.arm.robot
+        else:
+            self._arm = None
         if not self._arm:
             return
         self._arm.rm_close_modbustcp_mode()
@@ -53,11 +57,13 @@ class DexterousHand(qtbase.QObject):
         self.th_get_hand_curr.start()
         printc(f"✅ 机械臂灵巧手状态获取线程启动完成")
         self.is_initialized = 1
+        printc(f"dexhand 初始化 {self._arm}")
 
     def deinitialize(self):
         # if hasattr(self, "th_get_hand_curr"):
         self.is_t_run = 0
         self.is_initialized = 0
+        printc(f"dexhand 反初始化")
 
     def _get_arm_hand_curr(self):
         if not hasattr(self.arm, "hand"):
