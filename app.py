@@ -342,9 +342,6 @@ class MainWindow(qtbase.QApp):
 
     #@require_arm_connected
     def spacemouse_start(self):
-        if not self.arm.is_connected:
-            self.add_log("机械臂未连接！", color="red")
-            return
         printc("启动 spacemouse 服务...")
         
         # 等待机械臂异步连接完成
